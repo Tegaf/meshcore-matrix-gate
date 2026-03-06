@@ -1,4 +1,4 @@
-# MCRelay - MeshCore Matrix Relay
+# MCMRelay - MeshCore Matrix Relay
 
 Fork of mmrelay adapted for **MeshCore** protocol. Bridges MeshCore mesh networks to Matrix chat rooms.
 
@@ -11,22 +11,38 @@ Tested on Raspberry Pi (Matrix) and Heltec V3 (MeshCore).
 
 ## Installation
 
+Requires Python 3.10+. Use a virtual environment or pipx:
+
 ```bash
-cd mcrelay
-pip install -e .
+cd mcmrelay
+python -m venv .venv && .venv/bin/pip install -e .
 # or: pipx install -e .
 ```
 
-## Configuration
+## Getting Started
 
-Copy `config.example.yaml` to `~/.mcrelay/config.yaml` and fill in your values:
+### 1. Matrix Setup
+
+You need a **bot account** for the relay. Create a dedicated Matrix account (e.g. `@mcmrelay-bot:matrix.org`):
+
+1. Install [Element](https://element.io/download) (web or desktop)
+2. Create a new account on matrix.org or your homeserver
+3. Create a room for the bridge (or use an existing one)
+4. Get the **room ID**: Element → Room settings → Advanced → Room ID (e.g. `!abc123:matrix.org`)
+5. Get the **access token**: Element → Settings → Help & About → Access Token (scroll down)
+
+### 2. Configuration
+
+Config is looked up in order: `--config` path, `~/.mcmrelay/config.yaml` (Linux/macOS), `./config.yaml`. On Windows: platform app data directory.
+
+Copy `config.example.yaml` to your config directory:
 
 ```bash
-mkdir -p ~/.mcrelay
-cp config.example.yaml ~/.mcrelay/config.yaml
+mkdir -p ~/.mcmrelay
+cp config.example.yaml ~/.mcmrelay/config.yaml
 ```
 
-Edit `~/.mcrelay/config.yaml`:
+Edit `~/.mcmrelay/config.yaml`:
 
 **Serial (USB):**
 
@@ -74,29 +90,43 @@ meshcore:
   # tcp_poll_enabled: false  # enable if WiFi firmware doesn't push RX_LOG_DATA
 ```
 
+### Platform Notes (Serial)
+
+| Platform | Serial port example |
+|----------|----------------------|
+| Linux | `/dev/ttyUSB0`, `/dev/ttyACM0` |
+| macOS | `/dev/cu.usbserial-*`, `/dev/cu.usbmodem*` |
+| Windows | `COM3`, `COM4` |
+
+`channel_0_secret` must be 32 hex characters (16 bytes). Use the same secret on all MeshCore devices in the channel.
+
 ## Running
 
 ```bash
-mcrelay
+mcmrelay
 ```
 
 ## Systemd (optional)
 
-For auto-start on boot, copy `mcrelay.service.example` to `~/.config/systemd/user/mcrelay.service`, edit paths, then:
+For auto-start on boot, copy `mcmrelay.service.example` to `~/.config/systemd/user/mcmrelay.service`, edit paths, then:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable mcrelay
-systemctl --user start mcrelay
+systemctl --user enable mcmrelay
+systemctl --user start mcmrelay
 ```
 
 ## Credits
 
-MCRelay is a fork of [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) by Geoff Whittington, Jeremiah K., and contributors. Adapted for MeshCore protocol. Licensed under GPL-3.0.
+MCMRelay is a fork of [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) by Geoff Whittington, Jeremiah K., and contributors. Adapted for MeshCore protocol. Licensed under GPL-3.0.
 
-## Migration from mmrelay (Meshtastic)
+For more Matrix setup details (Element, encrypted rooms), see [mmrelay Getting Started](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay).
 
-If you have existing `~/.mmrelay/config.yaml`, you can copy it and change:
+## Migration
+
+**From mcrelay (previous name):** Rename `~/.mcrelay` to `~/.mcmrelay` and reinstall: `pip install -e .` (or `pipx install -e .`).
+
+**From mmrelay (Meshtastic):** If you have existing `~/.mmrelay/config.yaml`, you can copy it and change:
 - `meshtastic` → `meshcore`
 - `meshtastic_channel` → `meshcore_channel`
 - `connection_type: tcp` + `host` → `connection_type: serial` + `serial_port: /dev/ttyUSB0`
