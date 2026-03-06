@@ -2,6 +2,8 @@
 
 Fork of mmrelay adapted for **MeshCore** protocol. Bridges MeshCore mesh networks to Matrix chat rooms.
 
+Tested on Raspberry Pi (Matrix) and Heltec V3 (MeshCore).
+
 ## Installation
 
 ```bash
