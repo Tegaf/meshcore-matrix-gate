@@ -1,4 +1,4 @@
-"""Main MCRelay loop - MeshCore <-> Matrix bridge."""
+"""Main MCMRelay loop - MeshCore <-> Matrix bridge."""
 import asyncio
 import signal
 import sys
@@ -6,18 +6,18 @@ import sys
 from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
 from nio.events.room_events import MegolmEvent, RoomMemberEvent
 
-from mcrelay import __version__
-from mcrelay.db_utils import initialize_database
-from mcrelay.log_utils import get_logger
-from mcrelay.matrix_utils import connect_matrix, join_matrix_room, on_room_message, _on_megolm_event
-from mcrelay.meshcore_utils import connect_meshcore, check_connection
-from mcrelay.message_queue import get_message_queue, start_message_queue, stop_message_queue
+from mcmrelay import __version__
+from mcmrelay.db_utils import initialize_database
+from mcmrelay.log_utils import get_logger
+from mcmrelay.matrix_utils import connect_matrix, join_matrix_room, on_room_message, _on_megolm_event
+from mcmrelay.meshcore_utils import connect_meshcore, check_connection
+from mcmrelay.message_queue import get_message_queue, start_message_queue, stop_message_queue
 
-logger = get_logger(name="MCRelay")
+logger = get_logger(name="MCMRelay")
 
 
 async def main(cfg):
-    from mcrelay import meshcore_utils, matrix_utils
+    from mcmrelay import meshcore_utils, matrix_utils
     meshcore_utils.config = cfg
     matrix_utils.config = cfg
 
@@ -62,7 +62,7 @@ async def main(cfg):
     get_message_queue().ensure_processor_started()
     asyncio.create_task(check_connection())
 
-    logger.info("MCRelay running. Matrix <-> MeshCore bridge active.")
+    logger.info("MCMRelay running. Matrix <-> MeshCore bridge active.")
 
     try:
         while not shutdown_event.is_set():
@@ -100,8 +100,8 @@ async def main(cfg):
 
 
 def run_main(args):
-    logger.info(f"Starting MCRelay v{__version__}")
-    from mcrelay.config import load_config
+    logger.info(f"Starting MCMRelay v{__version__}")
+    from mcmrelay.config import load_config
     cfg = load_config(args=args)
     if not cfg or "matrix" not in cfg or "meshcore" not in cfg or "matrix_rooms" not in cfg:
         logger.error("Invalid config. Need matrix, meshcore, matrix_rooms.")

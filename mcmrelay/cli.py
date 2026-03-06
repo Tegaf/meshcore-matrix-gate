@@ -1,14 +1,14 @@
-"""CLI for MCRelay."""
+"""CLI for MCMRelay."""
 import argparse
 import sys
 
-from mcrelay import __version__
-from mcrelay.main import run_main
+from mcmrelay import __version__
+from mcmrelay.main import run_main
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="MCRelay - MeshCore Matrix Relay (MeshCore <-> Matrix bridge)"
+        description="MCMRelay - MeshCore Matrix Relay (MeshCore <-> Matrix bridge)"
     )
     parser.add_argument("--config", help="Path to config file", default=None)
     parser.add_argument("--version", action="store_true", help="Show version")
@@ -19,11 +19,11 @@ def parse_arguments():
 def main():
     args = parse_arguments()
     if args.version:
-        print(f"MCRelay v{__version__}")
+        print(f"MCMRelay v{__version__}")
         return 0
     if args.debug:
         import os
-        os.environ["MCRELAY_DEBUG"] = "1"
+        os.environ["MCMRELAY_DEBUG"] = "1"
     return run_main(args)
 
 

@@ -1,12 +1,12 @@
 [Unit]
-Description=MCRelay - MeshCore Matrix Bridge
+Description=MCMRelay - MeshCore Matrix Bridge
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/path/to/mcrelay/.venv/bin/mcrelay
-WorkingDirectory=/path/to/mcrelay
+ExecStart=/path/to/mcmrelay/.venv/bin/mcmrelay
+WorkingDirectory=/path/to/mcmrelay
 Restart=on-failure
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
