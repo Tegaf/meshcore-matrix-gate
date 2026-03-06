@@ -537,8 +537,7 @@ async def on_meshcore_message(event):
             if pt == 0x05:  # channel msg but failed to decrypt
                 ch = payload.get("chan_hash", "?")
                 logger.warning(
-                    f"RX_LOG_DATA: message from channel hash={ch} - Heltec has hash 4f (private) or 06 (public). "
-                    f"Other device must have EXACTLY same channel: tegaf-matrix, secret 69c69cd1e3047d39fa87f94d4d26cd74"
+                    f"RX_LOG_DATA: message from channel hash={ch} - check channel_0_secret in config matches other devices"
                 )
             elif pt is not None:
                 logger.debug(f"RX_LOG_DATA: payload_type={pt} (5=channel), no message")
