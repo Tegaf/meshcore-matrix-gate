@@ -19,6 +19,21 @@ logger = get_logger(name="MCMGate")
 # Suppress nio "Timed out, sleeping" warnings (normal retry behavior)
 logging.getLogger("nio.client.async_client").setLevel(logging.ERROR)
 
+REJOIN_INTERVAL_SEC = 300  # 5 min – recovery when room freezes
+
+
+async def _periodic_matrix_rejoin(client, rooms, shutdown_event):
+    """Periodically re-join Matrix rooms – recovery when room freezes."""
+    await asyncio.sleep(60)  # first rejoin after 1 min
+    while not shutdown_event.is_set():
+        try:
+            for room in rooms:
+                await join_matrix_room(client, room)
+            logger.info("Matrix: periodic re-join done")
+        except Exception as e:
+            logger.warning(f"Matrix re-join error: {e}")
+        await asyncio.sleep(REJOIN_INTERVAL_SEC)
+
 
 async def main(cfg):
     from mcmgate import meshcore_utils, matrix_utils
@@ -65,6 +80,7 @@ async def main(cfg):
 
     get_message_queue().ensure_processor_started()
     asyncio.create_task(check_connection())
+    asyncio.create_task(_periodic_matrix_rejoin(matrix_client, matrix_rooms, shutdown_event))
 
     logger.info("MCMGate running. Matrix <-> MeshCore bridge active.")
 

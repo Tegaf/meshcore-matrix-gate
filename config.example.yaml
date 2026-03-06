@@ -7,6 +7,7 @@ matrix:
   bot_user_id: "@yourbot:matrix.example.com"
 
 # Matrix rooms to bridge (get room ID from Element: room settings -> Advanced)
+# Different rooms can use different MeshCore channels (0, 1, …)
 matrix_rooms:
   - id: "!roomId:matrix.example.com"
     meshcore_channel: 0   # Channel 0 = broadcast

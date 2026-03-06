@@ -463,19 +463,39 @@ async def connect_meshcore(passed_config=None, force_connect=False):
                         k = f"channel_{i}_secret"
                         if mc_config.get(k):
                             channel_secrets[i] = mc_config[k]
+                    channels = meshcore_client._reader.channels
+                    next_slot = 0
                     for idx, secret_hex in channel_secrets.items():
                         try:
                             secret = bytes.fromhex(secret_hex)
                         except (ValueError, TypeError) as e:
                             logger.warning(f"Invalid channel_{idx}_secret (not hex): {e}")
                             continue
+                        # SHA256 hash (MeshCore)
                         ch_hash = sha256(secret).hexdigest()[0:2]
-                        meshcore_client._reader.channels[idx] = {
+                        channels[next_slot] = {
                             "channel_idx": idx,
                             "channel_name": f"channel_{idx}",
                             "channel_secret": secret,
                             "channel_hash": ch_hash,
                         }
+                        logger.info(f"MeshCore channel {idx} configured: hash={ch_hash}")
+                        next_slot += 1
+                    # Heltec WiFi may use different hashes (e.g. 34, 00) – add fallbacks
+                    for observed_hash in ("34", "00"):
+                        for idx, secret_hex in channel_secrets.items():
+                            try:
+                                secret = bytes.fromhex(secret_hex)
+                            except (ValueError, TypeError):
+                                continue
+                            channels[next_slot] = {
+                                "channel_idx": idx,
+                                "channel_name": f"channel_{idx}",
+                                "channel_secret": secret,
+                                "channel_hash": observed_hash,
+                            }
+                            logger.info(f"MeshCore channel {idx} fallback: hash={observed_hash}")
+                            next_slot += 1
             elif connection_type == "ble":
                 from meshcore import MeshCore
 
@@ -492,9 +512,18 @@ async def connect_meshcore(passed_config=None, force_connect=False):
             if meshcore_client is None:
                 raise ConnectionError("MeshCore connect returned None")
 
-            # Subscribe to incoming messages
+            # Subscribe to incoming messages – create_task so handler does not block
+            # (otherwise Matrix->MeshCore send waits for response but receive loop is blocked in matrix_relay)
+            def _log_task_exc(t):
+                if t.cancelled():
+                    return
+                exc = t.exception()
+                if exc:
+                    logger.error(f"MeshCore relay task failed: {exc}")
+
             async def on_message(event):
-                await on_meshcore_message(event)
+                t = asyncio.create_task(on_meshcore_message(event))
+                t.add_done_callback(_log_task_exc)
 
             _msg_subscription = meshcore_client.subscribe(
                 EventType.CONTACT_MSG_RECV, on_message
@@ -534,10 +563,31 @@ async def on_meshcore_message(event):
 
     payload = event.payload
 
-    # RX_LOG_DATA: USB firmware returns raw RF data, reader decrypts to "message"
+    # RX_LOG_DATA: WiFi/TCP firmware returns raw RF data, reader decrypts to "message"
     if event.type == EventType.RX_LOG_DATA:
         text = payload.get("message", "")
-        channel = 0  # assume channel 0
+        # Derive channel from chan_hash – RX_LOG_DATA does not include channel_idx
+        chan_hash = payload.get("chan_hash", "")
+        chan_name = payload.get("chan_name", "")
+        channel = 0  # default
+        if meshcore_client and chan_hash:
+            channels_list = getattr(meshcore_client._reader, "channels", None)
+            if channels_list:
+                for idx, c in enumerate(channels_list):
+                    if isinstance(c, dict) and c.get("channel_hash") == chan_hash:
+                        channel = c.get("channel_idx", idx)
+                        break
+                else:
+                    # Fallback: chan_name may be "channel_1" or "meshcoregate"
+                    if "1" in chan_name or "meshcoregate" in chan_name.lower():
+                        channel = 1
+                    logger.info(f"RX_LOG_DATA chan_hash={chan_hash} chan_name={chan_name!r} -> channel={channel} (hash not in list)")
+            else:
+                if "1" in chan_name or "meshcoregate" in chan_name.lower():
+                    channel = 1
+                logger.info(f"RX_LOG_DATA chan_hash={chan_hash} chan_name={chan_name!r} -> channel={channel} (no channels)")
+        if text:
+            logger.info(f"RX_LOG_DATA channel={channel} chan_hash={chan_hash} chan_name={chan_name!r} text={text[:40]!r}")
         sender = "?"
         path_len = payload.get("path_len", 1)  # 0 = likely echo of our broadcast
         if not text:
@@ -609,6 +659,7 @@ async def on_meshcore_message(event):
             for r in matrix_rooms
         )
         if not channel_mapped:
+            logger.info(f"Skip relay: channel={channel} not mapped (rooms want {[r.get('meshcore_channel', r.get('meshtastic_channel')) for r in matrix_rooms]})")
             return
 
         longname = get_longname(sender) or sender
@@ -629,10 +680,11 @@ async def on_meshcore_message(event):
         prefix = get_matrix_prefix(config, longname, shortname, meshnet_name)
         formatted_message = f"{prefix}{text}"
 
-        logger.info(f"Relaying MeshCore message from {longname} to Matrix")
+        logger.info(f"Relaying MeshCore message from {longname} to Matrix ({len([r for r in matrix_rooms if r.get('meshcore_channel', r.get('meshtastic_channel')) == channel])} rooms)")
 
         for room in matrix_rooms:
             if room.get("meshcore_channel", room.get("meshtastic_channel")) == channel:
+                logger.info(f"Sending to room {room['id']}")
                 await matrix_relay(
                     room["id"],
                     formatted_message,
