@@ -1,0 +1,35 @@
+# MCRelay config example - MeshCore Matrix Relay
+# Copy to ~/.mcrelay/config.yaml and fill in your values
+
+matrix:
+  homeserver: "https://matrix.example.com:8448"
+  access_token: "YOUR_MATRIX_ACCESS_TOKEN"
+  bot_user_id: "@yourbot:matrix.example.com"
+
+# Matrix rooms to bridge (get room ID from Element: room settings -> Advanced)
+matrix_rooms:
+  - id: "!roomId:matrix.example.com"
+    meshcore_channel: 0   # Channel 0 = broadcast
+
+meshcore:
+  # TCP (WiFi firmware - Heltec with WiFi)
+  connection_type: tcp
+  host: "192.168.1.100"
+  port: 5000
+
+  # Serial (USB firmware)
+  # connection_type: serial
+  # serial_port: "/dev/ttyUSB0"
+  # baudrate: 115200
+
+  meshnet_name: "My Meshnet"
+  broadcast_enabled: true
+  message_delay: 2.2
+
+  # Channel secrets for LOG_DATA decryption (16 bytes hex each)
+  # Private channel - only devices with same secret can decrypt
+  channel_0_secret: "your_channel_0_secret_32_hex_chars"
+  # channel_1_secret: "your_channel_1_secret_32_hex_chars"
+
+  # TCP poll - enable only if WiFi firmware doesn't push RX_LOG_DATA
+  # tcp_poll_enabled: false
