@@ -33,7 +33,7 @@ You need a **bot account** for the relay. Create a dedicated Matrix account (e.g
 5. **Access token**: Settings → Help & About → scroll to bottom, expand Access Token and copy
 6. **Close the window** – do not log out. Logging out invalidates the token. After closing, the session stays active.
 
-> **Room encryption:** Matrix rooms with E2EE are not currently supported. The bot cannot decrypt messages in encrypted rooms, so Matrix→MeshCore relay does not work. Messages in both directions may fail. Use **unencrypted** rooms.
+> **Room encryption:** Matrix rooms with E2EE are not currently supported.
 
 ### 2. Configuration
 
