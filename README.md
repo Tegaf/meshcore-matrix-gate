@@ -154,7 +154,7 @@ systemctl --user start mcmgate
 
 ## Credits
 
-MCMGate is inspired by [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) by Geoff Whittington, Jeremiah K., and contributors. Bridges MeshCore LoRa mesh with Matrix (open-source federated chat). Adapted for MeshCore protocol. GPL-3.0.
+MCMGate is inspired by [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) by Jeremiah K., and contributors. Bridges MeshCore LoRa mesh with Matrix (open-source federated chat). Adapted for MeshCore protocol. GPL-3.0.
 
 For more Matrix setup details (Element, encrypted rooms), see [mmrelay Getting Started](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay).
 
