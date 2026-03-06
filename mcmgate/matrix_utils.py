@@ -17,6 +17,10 @@ from mcmgate.log_utils import get_logger
 logger = get_logger(name="matrix_utils")
 config = None
 matrix_client = None
+
+# Dedup: same (sender, text) from bridged rooms - avoid relaying twice
+_matrix_recent_relay: dict[str, float] = {}
+_MATRIX_RELAY_DEDUP_SEC = 8
 matrix_homeserver = None
 matrix_rooms = None
 matrix_access_token = None
@@ -97,6 +101,25 @@ async def join_matrix_room(client, room_config):
         logger.warning(f"Could not join {room_id}: {e}")
 
 
+async def force_rejoin_room(client, room_id: str) -> str:
+    """Leave and re-join room – recovery when room freezes. Returns resolved room_id."""
+    if room_id.startswith("#"):
+        resp = await client.room_resolve_alias(room_id)
+        if hasattr(resp, "room_id") and resp.room_id:
+            room_id = resp.room_id
+    try:
+        await client.room_leave(room_id)
+        await asyncio.sleep(1.0)
+    except Exception as e:
+        logger.debug(f"Leave {room_id}: {e}")
+    try:
+        await client.join(room_id)
+        logger.info(f"Force re-joined room {room_id}")
+    except Exception as e:
+        logger.warning(f"Could not re-join {room_id}: {e}")
+    return room_id
+
+
 async def matrix_relay(room_id, message, longname, shortname, meshnet_name, portnum,
                       meshtastic_id=None, meshtastic_replyId=None, meshtastic_text=None,
                       emote=False, emoji=False, reply_to_event_id=None):
@@ -105,6 +128,27 @@ async def matrix_relay(room_id, message, longname, shortname, meshnet_name, port
     client = await connect_matrix()
     if not client or not config:
         return
+    # Resolve room alias to canonical ID
+    if room_id.startswith("#"):
+        resp = await client.room_resolve_alias(room_id)
+        if hasattr(resp, "room_id") and resp.room_id:
+            room_id = resp.room_id
+        else:
+            logger.warning(f"Could not resolve room alias {room_id}")
+            return
+    # Conduit may use different server suffix - use room ID from client.rooms if available
+    room_localpart = room_id.split(":")[0] if ":" in room_id else room_id
+    if room_id not in client.rooms and client.rooms:
+        for rid in client.rooms:
+            if rid.split(":")[0] == room_localpart:
+                room_id = rid
+                logger.info(f"Using client.rooms ID for {room_localpart}: {room_id}")
+                break
+        else:
+            logger.debug(
+                f"Room {room_localpart} not in client.rooms, trying config room_id. "
+                f"Known: {list(client.rooms.keys())[:5]}"
+            )
     local_meshnet = config.get("meshcore", {}).get("meshnet_name", "MeshCore")
     content = {
         "msgtype": "m.emote" if emote else "m.text",
@@ -117,21 +161,52 @@ async def matrix_relay(room_id, message, longname, shortname, meshnet_name, port
         content["meshtastic_id"] = meshtastic_id
     if meshtastic_text:
         content["meshtastic_text"] = meshtastic_text
-    try:
-        await asyncio.wait_for(
-            client.room_send(room_id=room_id, message_type="m.room.message", content=content),
+    ignore_unverified = config.get("matrix", {}).get("ignore_unverified_devices", False)
+    from nio.responses import RoomSendError
+
+    async def _do_send(rid):
+        return await asyncio.wait_for(
+            client.room_send(
+                room_id=rid,
+                message_type="m.room.message",
+                content=content,
+                ignore_unverified_devices=ignore_unverified,
+            ),
             timeout=10.0,
         )
-        logger.info(f"Sent to Matrix room {room_id}")
+
+    logger.info(f"Sending to room {room_localpart} (room_id={room_id})")
+    resp = None
+    try:
+        resp = await _do_send(room_id)
+        if isinstance(resp, RoomSendError):
+            logger.warning(f"Matrix send failed for {room_localpart}, trying force re-join...")
+            room_id = await force_rejoin_room(client, room_id)
+            resp = await _do_send(room_id)
+    except (asyncio.TimeoutError, OSError, ConnectionError) as e:
+        logger.warning(f"Matrix send error for {room_localpart}: {e}, trying force re-join...")
+        try:
+            room_id = await force_rejoin_room(client, room_id)
+            resp = await _do_send(room_id)
+        except Exception as e2:
+            logger.error(f"Error sending to Matrix room {room_localpart}: {e2}")
+            return
     except Exception as e:
-        logger.error(f"Error sending to Matrix: {e}")
+        logger.error(f"Error sending to Matrix room {room_localpart}: {e}")
+        return
+
+    if resp is None or isinstance(resp, RoomSendError):
+        logger.error(f"Matrix room_send failed for {room_localpart} (after retry): {resp}")
+    else:
+        logger.info(f"Sent to Matrix room {room_localpart} (event_id={resp.event_id})")
 
 
 def _on_megolm_event(room, event):
     """Log undecrypted MegolmEvent - bot has no keys for room."""
+    room_short = room.room_id.split(":")[0] if ":" in room.room_id else room.room_id
     logger.warning(
-        f"Matrix: undecryptable message in {room.room_id} from {event.sender} "
-        "(room encrypted, bot has no keys - verify device in Element)"
+        f"Matrix: undecryptable message in {room_short} from {event.sender} - "
+        "Matrix->MeshCore relay blocked (verify bot device in Element Security settings)"
     )
 
 
@@ -139,6 +214,9 @@ async def on_room_message(room, event):
     """Handle Matrix message - relay to MeshCore if broadcast enabled."""
     from mcmgate.meshcore_utils import meshcore_client, register_sent_to_meshcore
     from mcmgate.message_queue import queue_message, get_message_queue
+
+    room_localpart = room.room_id.split(":")[0] if ":" in room.room_id else room.room_id
+    logger.debug(f"Matrix message received in room {room_localpart} from {event.sender}")
 
     if not meshcore_client or event.sender == bot_user_id:
         return
@@ -153,17 +231,35 @@ async def on_room_message(room, event):
         logger.debug(f"Matrix: empty body for event {type(event).__name__} in {room.room_id}")
         return
 
+    # Match room by ID - Conduit may use different server suffix
     room_config = None
     for rc in matrix_rooms:
-        if rc["id"] == room.room_id:
+        rc_id = rc["id"]
+        rc_localpart = rc_id.split(":")[0] if ":" in rc_id else rc_id
+        if rc_id == room.room_id or rc_localpart == room_localpart:
             room_config = rc
             break
-    if not room_config or not config.get("meshcore", {}).get("broadcast_enabled", True):
+    if not room_config:
+        configured = [r["id"].split(":")[0] for r in (matrix_rooms or [])]
+        logger.info(f"Matrix: room {room.room_id} not in config (have: {configured}), skipping")
+        return
+    if not config.get("meshcore", {}).get("broadcast_enabled", True):
         return
 
     channel = room_config.get("meshcore_channel", room_config.get("meshtastic_channel", 0))
     display_name = room.user_name(event.sender) or event.sender
     reply_message = f"{display_name}: {text}"
+
+    # Dedup: same message from SAME room (avoid double process). Include channel so different rooms can both relay.
+    now = time.time()
+    dedup_key = f"{room_localpart}|{display_name}|{text}"
+    for k, ts in list(_matrix_recent_relay.items()):
+        if now - ts > _MATRIX_RELAY_DEDUP_SEC:
+            del _matrix_recent_relay[k]
+    if dedup_key in _matrix_recent_relay:
+        logger.debug(f"Matrix: skipping duplicate relay: {text[:40]!r}")
+        return
+    _matrix_recent_relay[dedup_key] = now
 
     # Anti-loop: register IMMEDIATELY (echo may arrive before queue)
     register_sent_to_meshcore(reply_message)
@@ -180,5 +276,7 @@ async def on_room_message(room, event):
         mapping_info={"matrix_sent_text": reply_message},
     )
     if success:
-        logger.info(f"Relaying Matrix message from {display_name} to MeshCore channel {channel}")
+        logger.info(f"Relaying Matrix message from {display_name} to MeshCore channel {channel} (room {room_localpart})")
+    else:
+        logger.warning(f"Failed to queue Matrix->MeshCore from {display_name} (room {room_localpart})")
     get_message_queue().ensure_processor_started()

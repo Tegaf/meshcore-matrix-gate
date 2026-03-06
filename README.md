@@ -56,7 +56,7 @@ matrix_rooms:
   - id: "!roomId:matrix.example.com"
     meshcore_channel: 0  # Channel 0 = broadcast
   - id: "!anotherRoom:matrix.example.com"
-    meshcore_channel: 1
+    meshcore_channel: 1  # e.g. separate private channel on Heltec
 
 meshcore:
   connection_type: serial
@@ -101,6 +101,8 @@ meshcore:
 | Windows | `COM3`, `COM4` |
 
 `channel_0_secret` must be 32 hex characters (16 bytes). Use the same secret on all MeshCore devices in the channel.
+
+**Multiple channels:** Supported in direction **MeshCore → Matrix** (each room can receive from its own channel). In the opposite direction **Matrix → MeshCore**, only channel 0 is supported – Heltec WiFi firmware does not broadcast to other channels. Create channel 1 on Heltec and add `channel_1_secret` to config. See [HELTEC_CHANNEL1.md](HELTEC_CHANNEL1.md) for setup.
 
 ## Running
 
