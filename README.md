@@ -21,6 +21,8 @@ cp config.example.yaml ~/.mcrelay/config.yaml
 
 Edit `~/.mcrelay/config.yaml`:
 
+**Serial (USB):**
+
 ```yaml
 matrix:
   homeserver: "https://matrix.example.com:8448"
@@ -40,6 +42,29 @@ meshcore:
   meshnet_name: "My MeshCore"
   broadcast_enabled: true
   message_delay: 2.2
+```
+
+**TCP (WiFi firmware – Heltec with WiFi):**
+
+```yaml
+matrix:
+  homeserver: "https://matrix.example.com:8448"
+  access_token: "your_token"
+  bot_user_id: "@yourbot:matrix.example.com"
+
+matrix_rooms:
+  - id: "!roomId:matrix.example.com"
+    meshcore_channel: 0
+
+meshcore:
+  connection_type: tcp
+  host: "192.168.1.100"   # Heltec IP (check your router)
+  port: 5000
+  meshnet_name: "My MeshCore"
+  broadcast_enabled: true
+  message_delay: 2.2
+  channel_0_secret: "your_channel_0_secret_32_hex_chars"  # for private channel
+  # tcp_poll_enabled: false  # enable if WiFi firmware doesn't push RX_LOG_DATA
 ```
 
 ## Running
