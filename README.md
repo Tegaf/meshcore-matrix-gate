@@ -56,9 +56,9 @@ matrix:
 
 matrix_rooms:
   - id: "!roomId:matrix.example.com"
-    meshcore_channel: 0  # Channel 0 = broadcast
+    meshcore_channel: 0  # separate private channel on Heltec
   - id: "!anotherRoom:matrix.example.com"
-    meshcore_channel: 1  # e.g. separate private channel on Heltec
+    meshcore_channel: 1  # separate private channel on Heltec
 
 meshcore:
   connection_type: serial
