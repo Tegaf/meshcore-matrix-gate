@@ -1,4 +1,4 @@
-"""Matrix connection and message relay for MCMRelay."""
+"""Matrix connection and message relay for MCMGate."""
 import asyncio
 import os
 import re
@@ -7,12 +7,12 @@ import time
 
 import certifi
 
-_DEBUG = os.environ.get("MCMRELAY_DEBUG") == "1"
+_DEBUG = os.environ.get("MCMGATE_DEBUG") == "1"
 from nio import AsyncClient, AsyncClientConfig, ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText, WhoamiError
 from nio.events.room_events import MegolmEvent, RoomMemberEvent
 
-from mcmrelay.config import get_base_dir
-from mcmrelay.log_utils import get_logger
+from mcmgate.config import get_base_dir
+from mcmgate.log_utils import get_logger
 
 logger = get_logger(name="matrix_utils")
 config = None
@@ -137,8 +137,8 @@ def _on_megolm_event(room, event):
 
 async def on_room_message(room, event):
     """Handle Matrix message - relay to MeshCore if broadcast enabled."""
-    from mcmrelay.meshcore_utils import meshcore_client, register_sent_to_meshcore
-    from mcmrelay.message_queue import queue_message, get_message_queue
+    from mcmgate.meshcore_utils import meshcore_client, register_sent_to_meshcore
+    from mcmgate.message_queue import queue_message, get_message_queue
 
     if not meshcore_client or event.sender == bot_user_id:
         return

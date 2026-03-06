@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcmrelay"
+name = "mcmgate"
 version = "0.1.0"
-description = "MeshCore Matrix Relay - Bridge between MeshCore and Matrix (inspired by mmrelay)"
+description = "MeshCore Matrix bridge. Inspired by mmrelay (Meshtastic), adapted for MeshCore protocol. GPL-3.0."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -18,8 +18,8 @@ dependencies = [
 ]
 
 [project.scripts]
-mcmrelay = "mcmrelay.cli:main"
+mcmgate = "mcmgate.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["mcmrelay*"]
+include = ["mcmgate*"]
