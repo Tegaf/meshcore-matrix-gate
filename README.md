@@ -35,16 +35,14 @@ You need a **bot account** for the relay. Create a dedicated Matrix account (e.g
 
 ### 2. Configuration
 
-Config is looked up in order: `--config` path, `~/.mcmgate/config.yaml` (Linux/macOS), `./config.yaml`. On Windows: platform app data directory.
-
-Copy `config.example.yaml` to your config directory:
+Config lives in `~/.mcmgate/config.yaml` (separate from the project). From the project directory:
 
 ```bash
 mkdir -p ~/.mcmgate
 cp config.example.yaml ~/.mcmgate/config.yaml
 ```
 
-Edit `~/.mcmgate/config.yaml`:
+Edit `~/.mcmgate/config.yaml` with your Matrix token, room ID, and MeshCore settings.
 
 **Serial (USB):**
 
@@ -67,6 +65,8 @@ meshcore:
   meshnet_name: "My MeshCore"
   broadcast_enabled: true
   message_delay: 2.2
+  channel_0_secret: "your_channel_0_secret_32_hex_chars"  # for private channel
+  channel_1_secret: "your_channel_0_secret_32_hex_chars"  # for private channel
 ```
 
 **TCP (WiFi firmware – Heltec with WiFi):**
@@ -104,13 +104,41 @@ meshcore:
 
 ## Running
 
+If you used venv, run from the project directory (or use the full path to the binary):
+
+```bash
+cd meshcore-matrix-gate
+.venv/bin/mcmgate
+```
+
+If you used pipx, run from anywhere:
+
 ```bash
 mcmgate
 ```
 
+Config is always read from `~/.mcmgate/config.yaml`.
+
 ## Systemd (optional)
 
-For auto-start on boot, copy `mcmgate.service.example` to `~/.config/systemd/user/mcmgate.service`, edit paths, then:
+For auto-start on boot:
+
+1. Copy the service file (adjust path if you cloned elsewhere):
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp ~/meshcore-matrix-gate/mcmgate.service.example ~/.config/systemd/user/mcmgate.service
+nano ~/.config/systemd/user/mcmgate.service
+```
+
+2. Replace `/path/to/meshcore-matrix-gate` with your actual path (e.g. `/home/USERNAME/meshcore-matrix-gate`):
+
+```
+ExecStart=/home/USERNAME/meshcore-matrix-gate/.venv/bin/mcmgate
+WorkingDirectory=/home/USERNAME/meshcore-matrix-gate
+```
+
+3. Enable and start:
 
 ```bash
 systemctl --user daemon-reload
@@ -118,17 +146,12 @@ systemctl --user enable mcmgate
 systemctl --user start mcmgate
 ```
 
+4. Check status: `systemctl --user status mcmgate`
+
 ## Credits
 
 MCMGate is inspired by [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) by Geoff Whittington, Jeremiah K., and contributors. Bridges MeshCore LoRa mesh with Matrix (open-source federated chat). Adapted for MeshCore protocol. GPL-3.0.
 
 For more Matrix setup details (Element, encrypted rooms), see [mmrelay Getting Started](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay).
 
-## Migration
 
-**From mcrelay or mcmrelay (previous names):** Rename `~/.mcrelay` or `~/.mcmrelay` to `~/.mcmgate` and reinstall.
-
-**From mmrelay (Meshtastic):** If you have existing `~/.mmrelay/config.yaml`, you can copy it and change:
-- `meshtastic` → `meshcore`
-- `meshtastic_channel` → `meshcore_channel`
-- `connection_type: tcp` + `host` → `connection_type: serial` + `serial_port: /dev/ttyUSB0`

@@ -1,5 +1,6 @@
 """Main MCMGate loop - MeshCore <-> Matrix bridge."""
 import asyncio
+import logging
 import signal
 import sys
 
@@ -14,6 +15,9 @@ from mcmgate.meshcore_utils import connect_meshcore, check_connection
 from mcmgate.message_queue import get_message_queue, start_message_queue, stop_message_queue
 
 logger = get_logger(name="MCMGate")
+
+# Suppress nio "Timed out, sleeping" warnings (normal retry behavior)
+logging.getLogger("nio.client.async_client").setLevel(logging.ERROR)
 
 
 async def main(cfg):
