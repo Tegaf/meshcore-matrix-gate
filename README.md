@@ -1,6 +1,6 @@
-# MCMRelay - MeshCore Matrix Relay
+# MCMGate - MeshCore Matrix Gate
 
-Inspired by mmrelay, adapted for **MeshCore** protocol. Bridges MeshCore mesh networks to Matrix chat rooms.
+MeshCore Matrix bridge. Inspired by mmrelay (Meshtastic), adapted for MeshCore protocol. GPL-3.0.
 
 Tested on Raspberry Pi (Matrix) and Heltec V3 (MeshCore).
 
@@ -14,7 +14,8 @@ Tested on Raspberry Pi (Matrix) and Heltec V3 (MeshCore).
 Requires Python 3.10+. Use a virtual environment or pipx:
 
 ```bash
-cd mcmrelay
+git clone https://github.com/Tegaf/meshcore-matrix-gate.git
+cd meshcore-matrix-gate
 python -m venv .venv && .venv/bin/pip install -e .
 # or: pipx install -e .
 ```
@@ -23,7 +24,7 @@ python -m venv .venv && .venv/bin/pip install -e .
 
 ### 1. Matrix Setup
 
-You need a **bot account** for the relay. Create a dedicated Matrix account (e.g. `@mcmrelay-bot:matrix.org`):
+You need a **bot account** for the relay. Create a dedicated Matrix account (e.g. `@mcmgate-bot:matrix.org`):
 
 1. Open [Element Web](https://app.element.io/) in a **private/incognito window** (Ctrl+Shift+N in Chrome, Ctrl+Shift+P in Firefox)
 2. Create an account on matrix.org or your homeserver
@@ -34,16 +35,16 @@ You need a **bot account** for the relay. Create a dedicated Matrix account (e.g
 
 ### 2. Configuration
 
-Config is looked up in order: `--config` path, `~/.mcmrelay/config.yaml` (Linux/macOS), `./config.yaml`. On Windows: platform app data directory.
+Config is looked up in order: `--config` path, `~/.mcmgate/config.yaml` (Linux/macOS), `./config.yaml`. On Windows: platform app data directory.
 
 Copy `config.example.yaml` to your config directory:
 
 ```bash
-mkdir -p ~/.mcmrelay
-cp config.example.yaml ~/.mcmrelay/config.yaml
+mkdir -p ~/.mcmgate
+cp config.example.yaml ~/.mcmgate/config.yaml
 ```
 
-Edit `~/.mcmrelay/config.yaml`:
+Edit `~/.mcmgate/config.yaml`:
 
 **Serial (USB):**
 
@@ -104,28 +105,28 @@ meshcore:
 ## Running
 
 ```bash
-mcmrelay
+mcmgate
 ```
 
 ## Systemd (optional)
 
-For auto-start on boot, copy `mcmrelay.service.example` to `~/.config/systemd/user/mcmrelay.service`, edit paths, then:
+For auto-start on boot, copy `mcmgate.service.example` to `~/.config/systemd/user/mcmgate.service`, edit paths, then:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable mcmrelay
-systemctl --user start mcmrelay
+systemctl --user enable mcmgate
+systemctl --user start mcmgate
 ```
 
 ## Credits
 
-MCMRelay is inspired by [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) by Geoff Whittington, Jeremiah K., and contributors. Adapted for MeshCore protocol. Licensed under GPL-3.0.
+MCMGate is inspired by [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) by Geoff Whittington, Jeremiah K., and contributors. Bridges MeshCore LoRa mesh with Matrix (open-source federated chat). Adapted for MeshCore protocol. GPL-3.0.
 
 For more Matrix setup details (Element, encrypted rooms), see [mmrelay Getting Started](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay).
 
 ## Migration
 
-**From mcrelay (previous name):** Rename `~/.mcrelay` to `~/.mcmrelay` and reinstall: `pip install -e .` (or `pipx install -e .`).
+**From mcrelay or mcmrelay (previous names):** Rename `~/.mcrelay` or `~/.mcmrelay` to `~/.mcmgate` and reinstall.
 
 **From mmrelay (Meshtastic):** If you have existing `~/.mmrelay/config.yaml`, you can copy it and change:
 - `meshtastic` → `meshcore`

@@ -1,12 +1,12 @@
 [Unit]
-Description=MCMRelay - MeshCore Matrix Bridge
+Description=MCMGate - MeshCore LoRa <-> Matrix bridge
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/path/to/mcmrelay/.venv/bin/mcmrelay
-WorkingDirectory=/path/to/mcmrelay
+ExecStart=/path/to/meshcore-matrix-gate/.venv/bin/mcmgate
+WorkingDirectory=/path/to/meshcore-matrix-gate
 Restart=on-failure
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1

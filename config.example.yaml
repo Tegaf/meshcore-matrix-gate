@@ -1,5 +1,5 @@
-# MCMRelay config example - MeshCore Matrix Relay
-# Copy to ~/.mcmrelay/config.yaml and fill in your values
+# MCMGate config - MeshCore LoRa <-> Matrix bridge
+# Copy to ~/.mcmgate/config.yaml and fill in your values
 
 matrix:
   homeserver: "https://matrix.example.com:8448"

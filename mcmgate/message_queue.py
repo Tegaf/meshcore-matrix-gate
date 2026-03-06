@@ -8,9 +8,9 @@ from typing import Callable, Optional
 
 from meshcore import EventType
 
-from mcmrelay.log_utils import get_logger
+from mcmgate.log_utils import get_logger
 
-_DEBUG = os.environ.get("MCMRELAY_DEBUG") == "1"
+_DEBUG = os.environ.get("MCMGATE_DEBUG") == "1"
 
 logger = get_logger(name="MessageQueue")
 DEFAULT_MESSAGE_DELAY = 2.2
@@ -87,7 +87,7 @@ class MessageQueue:
 
                 # Check MeshCore client
                 try:
-                    from mcmrelay.meshcore_utils import meshcore_client
+                    from mcmgate.meshcore_utils import meshcore_client
                     if not meshcore_client or not meshcore_client.is_connected:
                         await asyncio.sleep(1.0)
                         continue
@@ -105,7 +105,7 @@ class MessageQueue:
                 # Anti-loop: register BEFORE send (echo may arrive before return)
                 mi = current_message.mapping_info or {}
                 if txt := mi.get("matrix_sent_text"):
-                    from mcmrelay.meshcore_utils import register_sent_to_meshcore
+                    from mcmgate.meshcore_utils import register_sent_to_meshcore
                     register_sent_to_meshcore(txt)
                     if _DEBUG:
                         logger.info(f"[DEBUG] QUEUE: registering BEFORE send {txt[:40]!r}")
