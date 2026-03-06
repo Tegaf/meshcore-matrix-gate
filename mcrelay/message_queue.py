@@ -68,7 +68,7 @@ class MessageQueue:
     def ensure_processor_started(self):
         if self._running and self._processor_task is None:
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 if loop.is_running():
                     self._processor_task = loop.create_task(self._process_queue())
             except RuntimeError:

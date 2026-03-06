@@ -272,7 +272,7 @@ class MeshCoreDirectClient:
         timeout: float = 5.0,
     ) -> Optional[Event]:
         """Send command and wait for response event."""
-        future = asyncio.get_event_loop().create_future()
+        future = asyncio.get_running_loop().create_future()
 
         def handler(event: Event):
             if not future.done() and event.type in expected_types:
@@ -306,25 +306,6 @@ class MeshCoreDirectClient:
                 logger.debug(f"Poll error: {e}")
                 await asyncio.sleep(poll_interval)
 
-
-async def _tcp_poll_messages_loop(client) -> None:
-    """Poll get_msg for TCP/WiFi firmware (may not push MESSAGES_WAITING)."""
-    poll_interval = 2.5
-    while client and client.is_connected and not shutting_down:
-        try:
-            result = await client.commands.get_msg(timeout=3.0)
-            if result.type == EventType.CHANNEL_MSG_RECV or result.type == EventType.CONTACT_MSG_RECV:
-                logger.info(f"MeshCore TCP message: {result.payload.get('text', '')[:60]!r}")
-            if result.type == EventType.NO_MORE_MSGS or result.type == EventType.ERROR:
-                await asyncio.sleep(poll_interval)
-                continue
-            await asyncio.sleep(0.1)
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            logger.debug(f"TCP poll error: {e}")
-            await asyncio.sleep(poll_interval)
-
     async def connect(self) -> bool:
         """Open serial and start message polling."""
         global _auto_fetch_task
@@ -347,7 +328,7 @@ async def _tcp_poll_messages_loop(client) -> None:
                 self.client._connected = False
                 self.client._transport = None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             await serial_asyncio.create_serial_connection(
                 loop,
@@ -363,7 +344,11 @@ async def _tcp_poll_messages_loop(client) -> None:
 
         # Register channels for LOG_DATA decryption (USB firmware returns 0x88 instead of CHANNEL_MSG_RECV)
         for idx, secret_hex in self._channel_secrets.items():
-            secret = bytes.fromhex(secret_hex)
+            try:
+                secret = bytes.fromhex(secret_hex)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid channel_{idx}_secret (not hex): {e}")
+                continue
             ch_hash = sha256(secret).hexdigest()[0:2]
             self._reader.channels[idx] = {
                 "channel_idx": idx,
@@ -394,6 +379,25 @@ async def _tcp_poll_messages_loop(client) -> None:
             self._transport.close()
             self._transport = None
         logger.info("MeshCore disconnected")
+
+
+async def _tcp_poll_messages_loop(client) -> None:
+    """Poll get_msg for TCP/WiFi firmware (may not push MESSAGES_WAITING)."""
+    poll_interval = 2.5
+    while client and client.is_connected and not shutting_down:
+        try:
+            result = await client.commands.get_msg(timeout=3.0)
+            if result.type == EventType.CHANNEL_MSG_RECV or result.type == EventType.CONTACT_MSG_RECV:
+                logger.info(f"MeshCore TCP message: {result.payload.get('text', '')[:60]!r}")
+            if result.type == EventType.NO_MORE_MSGS or result.type == EventType.ERROR:
+                await asyncio.sleep(poll_interval)
+                continue
+            await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.debug(f"TCP poll error: {e}")
+            await asyncio.sleep(poll_interval)
 
 
 async def connect_meshcore(passed_config=None, force_connect=False):
@@ -460,7 +464,11 @@ async def connect_meshcore(passed_config=None, force_connect=False):
                         if mc_config.get(k):
                             channel_secrets[i] = mc_config[k]
                     for idx, secret_hex in channel_secrets.items():
-                        secret = bytes.fromhex(secret_hex)
+                        try:
+                            secret = bytes.fromhex(secret_hex)
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Invalid channel_{idx}_secret (not hex): {e}")
+                            continue
                         ch_hash = sha256(secret).hexdigest()[0:2]
                         meshcore_client._reader.channels[idx] = {
                             "channel_idx": idx,
