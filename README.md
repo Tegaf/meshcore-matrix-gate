@@ -4,6 +4,11 @@ Fork of mmrelay adapted for **MeshCore** protocol. Bridges MeshCore mesh network
 
 Tested on Raspberry Pi (Matrix) and Heltec V3 (MeshCore).
 
+## Screenshots
+
+![Heltec room](docs/heltec-room.png)
+
+
 ## Installation
 
 ```bash
