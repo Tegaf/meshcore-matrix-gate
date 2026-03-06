@@ -1,6 +1,6 @@
 # MCMRelay - MeshCore Matrix Relay
 
-Fork of mmrelay adapted for **MeshCore** protocol. Bridges MeshCore mesh networks to Matrix chat rooms.
+Inspirováno mmrelay, adaptováno pro **MeshCore** protokol. Bridges MeshCore mesh networks to Matrix chat rooms.
 
 Tested on Raspberry Pi (Matrix) and Heltec V3 (MeshCore).
 
@@ -25,11 +25,12 @@ python -m venv .venv && .venv/bin/pip install -e .
 
 You need a **bot account** for the relay. Create a dedicated Matrix account (e.g. `@mcmrelay-bot:matrix.org`):
 
-1. Install [Element](https://element.io/download) (web or desktop)
-2. Create a new account on matrix.org or your homeserver
-3. Create a room for the bridge (or use an existing one)
-4. Get the **room ID**: Element → Room settings → Advanced → Room ID (e.g. `!abc123:matrix.org`)
-5. Get the **access token**: Element → Settings → Help & About → Access Token (scroll down)
+1. Open [Element Web](https://app.element.io/) v **anonymním okně** (Ctrl+Shift+N v Chrome, Ctrl+Shift+P ve Firefoxu)
+2. Vytvořte účet na matrix.org nebo vašem homeserveru
+3. Vytvořte místnost pro bridge (nebo použijte existující)
+4. **Room ID**: Nastavení místnosti → Advanced → Room ID (např. `!abc123:matrix.org`)
+5. **Access token**: Nastavení → Help & About → na konec, rozbalte Access Token a zkopírujte
+6. **Zavřete okno** – neodhlašujte se. Odhlášení token zneplatní. Po zavření okna session zůstane aktivní.
 
 ### 2. Configuration
 
@@ -118,7 +119,7 @@ systemctl --user start mcmrelay
 
 ## Credits
 
-MCMRelay is a fork of [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) by Geoff Whittington, Jeremiah K., and contributors. Adapted for MeshCore protocol. Licensed under GPL-3.0.
+MCMRelay je inspirováno [mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay) (Meshtastic Matrix Relay) od Geoff Whittingtona, Jeremiah K. a přispěvatelů. Adaptováno pro MeshCore protokol. Licence GPL-3.0.
 
 For more Matrix setup details (Element, encrypted rooms), see [mmrelay Getting Started](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay).
 

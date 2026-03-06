@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mcmrelay"
 version = "0.1.0"
-description = "MeshCore Matrix Relay - Bridge between MeshCore and Matrix (fork of mmrelay)"
+description = "MeshCore Matrix Relay - Bridge between MeshCore and Matrix (inspired by mmrelay)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
