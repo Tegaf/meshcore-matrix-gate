@@ -1,9 +1,9 @@
-"""Database utilities - simplified for MCRelay (uses pubkey_prefix as node id)."""
+"""Database utilities - simplified for MCMRelay (uses pubkey_prefix as node id)."""
 import sqlite3
 import os
 
-from mcrelay.config import get_base_dir
-from mcrelay.log_utils import get_logger
+from mcmrelay.config import get_base_dir
+from mcmrelay.log_utils import get_logger
 
 logger = get_logger(name="db")
 

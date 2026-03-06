@@ -1,5 +1,5 @@
 """
-MeshCore connection and message handling for MCRelay.
+MeshCore connection and message handling for MCMRelay.
 Uses direct serial protocol (no appstart) for USB firmware compatibility.
 """
 
@@ -9,7 +9,7 @@ import time
 import unicodedata
 from typing import List, Optional
 
-_DEBUG = os.environ.get("MCRELAY_DEBUG") == "1"
+_DEBUG = os.environ.get("MCMRELAY_DEBUG") == "1"
 
 import serial_asyncio_fast as serial_asyncio
 from hashlib import sha256
@@ -18,8 +18,8 @@ from meshcore import EventType
 from meshcore.events import Event, EventDispatcher
 from meshcore.reader import MessageReader
 
-from mcrelay.db_utils import get_longname, get_shortname, save_longname, save_shortname
-from mcrelay.log_utils import get_logger
+from mcmrelay.db_utils import get_longname, get_shortname, save_longname, save_shortname
+from mcmrelay.log_utils import get_logger
 
 config = None
 matrix_rooms: List[dict] = []
@@ -624,7 +624,7 @@ async def on_meshcore_message(event):
 
         meshnet_name = config.get("meshcore", {}).get("meshnet_name", "MeshCore")
 
-        from mcrelay.matrix_utils import get_matrix_prefix, matrix_relay
+        from mcmrelay.matrix_utils import get_matrix_prefix, matrix_relay
 
         prefix = get_matrix_prefix(config, longname, shortname, meshnet_name)
         formatted_message = f"{prefix}{text}"

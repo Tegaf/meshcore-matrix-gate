@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcrelay"
+name = "mcmrelay"
 version = "0.1.0"
 description = "MeshCore Matrix Relay - Bridge between MeshCore and Matrix (fork of mmrelay)"
 readme = "README.md"
@@ -18,8 +18,8 @@ dependencies = [
 ]
 
 [project.scripts]
-mcrelay = "mcrelay.cli:main"
+mcmrelay = "mcmrelay.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["mcrelay*"]
+include = ["mcmrelay*"]

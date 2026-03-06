@@ -5,7 +5,7 @@ from rich.logging import RichHandler
 config = None
 
 
-def get_logger(name="mcrelay"):
+def get_logger(name="mcmrelay"):
     logger = logging.getLogger(name)
     if not logger.handlers:
         handler = RichHandler(show_path=False)

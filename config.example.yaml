@@ -1,5 +1,5 @@
-# MCRelay config example - MeshCore Matrix Relay
-# Copy to ~/.mcrelay/config.yaml and fill in your values
+# MCMRelay config example - MeshCore Matrix Relay
+# Copy to ~/.mcmrelay/config.yaml and fill in your values
 
 matrix:
   homeserver: "https://matrix.example.com:8448"

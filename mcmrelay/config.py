@@ -1,11 +1,11 @@
-"""Configuration for MCRelay."""
+"""Configuration for MCMRelay."""
 import os
 import sys
 import platformdirs
 import yaml
 from yaml.loader import SafeLoader
 
-APP_NAME = "mcrelay"
+APP_NAME = "mcmrelay"
 APP_AUTHOR = None
 custom_data_dir = None
 
@@ -38,6 +38,6 @@ def load_config(config_file=None, args=None):
                     return yaml.load(f, Loader=SafeLoader) or {}
             except Exception as e:
                 import logging
-                logging.getLogger("mcrelay").error(f"Config load error: {e}")
+                logging.getLogger("mcmrelay").error(f"Config load error: {e}")
                 return {}
     return {}
