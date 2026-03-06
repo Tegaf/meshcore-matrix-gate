@@ -66,7 +66,7 @@ meshcore:
   broadcast_enabled: true
   message_delay: 2.2
   channel_0_secret: "your_channel_0_secret_32_hex_chars"  # for private channel
-  channel_1_secret: "your_channel_0_secret_32_hex_chars"  # for private channel
+  channel_1_secret: "your_channel_1_secret_32_hex_chars"  # for private channel
 ```
 
 **TCP (WiFi firmware – Heltec with WiFi):**
@@ -102,7 +102,7 @@ meshcore:
 
 `channel_0_secret` must be 32 hex characters (16 bytes). Use the same secret on all MeshCore devices in the channel.
 
-**Multiple channels:** Supported in direction **MeshCore → Matrix** (each room can receive from its own channel). In the opposite direction **Matrix → MeshCore**, only channel 0 is supported – Heltec WiFi firmware does not broadcast to other channels. Create channel 1 on Heltec and add `channel_1_secret` to config. See [HELTEC_CHANNEL1.md](HELTEC_CHANNEL1.md) for setup.
+**Multiple channels:** Supported in direction **MeshCore → Matrix** (each room can receive from its own channel). In the opposite direction **Matrix → MeshCore**, only channel 0 is supported – Heltec WiFi firmware does not broadcast to other channels. Create channel 1 on Heltec and add `channel_1_secret` to config.
 
 ## Running
 
