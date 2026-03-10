@@ -1,8 +1,8 @@
 # MeshCore DM Troubleshooting
 
-## Why DM from Tegaf Mobile doesn't appear in Matrix
+## Why DM from MeshCore doesn't appear in Matrix
 
-**Root cause:** DM decryption fails because the **node key** (Tegaf Gate's private key) is not available.
+**Root cause:** DM decryption fails because the **node key** (private key) is not available.
 
 ### Verification
 
@@ -17,7 +17,7 @@
 ### Solution: Add node key to config manually (only if auto-fetch fails)
 
 1. **Get the private key** – try `python3 export_node_key.py` from the project root first (uses TCP, same host/port as config). If device returns DISABLED:
-   - Connect Tegaf Gate via USB and use meshcore-cli or Web Console (flasher.meshcore.co.uk)
+   - Connect MeshCore via USB and use meshcore-cli or Web Console (flasher.meshcore.co.uk)
    - Or use a backup from initial device setup
 
 2. **Add to config** `~/.mcmgate/config.yaml`:

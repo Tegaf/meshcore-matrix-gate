@@ -47,8 +47,8 @@ Device-to-device MeshCore messages (DM) relay to/from Matrix. **Serial/USB:** CO
 | `matrix_to_meshcore_only` | no | - | Rooms that only send Matrix→MeshCore (do not receive). Map room_id → [contact pubkeys]. Messages from these rooms go to all listed contacts. |
 | `announce_on_start` | no | **false** | When true, send "Bridge online" DM to contacts on startup. Must be explicitly enabled. |
 | `announce_skip_contacts` | no | - | Pubkeys that do not receive announce (when `announce_on_start: true`) |
-| `node_public_key` | no | - | Tegaf Gate public key (64 hex). **Optional** – auto-fetched from device `self_info`. |
-| `node_private_key` | no | - | Tegaf Gate private key (128 hex). **Optional** – auto-fetched via `export_private_key` (works over TCP and USB on supported firmware). Add manually only if device returns DISABLED. |
+| `node_public_key` | no | - | Public key (64 hex). **Optional** – auto-fetched from device `self_info`. |
+| `node_private_key` | no | - | Private key (128 hex). **Optional** – auto-fetched via `export_private_key` (works over TCP and USB on supported firmware). Add manually only if device returns DISABLED. |
 | `reply_channel` | no | 0 | Fallback channel when room is only in meshcore_dm (not matrix_rooms) and DM fails |
 | `recipients` | no | - | Matrix user IDs that receive a copy of each DM |
 
@@ -60,10 +60,10 @@ Map each contact to their Matrix room(s). A room can appear for multiple contact
 contact_rooms:
   "contact1_pubkey_64_hex_chars":  # e.g. from check_contacts.py
     - "!roomA:matrix.example.com"
-    - "!sharedRoom:matrix.example.com"
+    - "!roomX:matrix.example.com"
   "contact2_pubkey_64_hex_chars":
     - "!roomB:matrix.example.com"
-    - "!sharedRoom:matrix.example.com"   # Shared – messages go to both
+    - "!roomX:matrix.example.com"   # Shared – messages go to both
 ```
 
 ### Node key auto-fetch

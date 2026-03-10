@@ -38,7 +38,9 @@ python -m venv .venv && .venv/bin/pip install -e .
 
 ### 1. Matrix Setup
 
-You need a **bot account** for the relay. Create a dedicated Matrix account (e.g. `@mcmgate-bot:matrix.org`):
+You need a **bot account** for the relay. Create a dedicated Matrix account (e.g. `@mcmgate-bot:matrix.org`).
+
+**Unencrypted rooms (simpler):** If you don't need E2EE, use unencrypted rooms and put `access_token` in config – no `mcmgate auth login` needed.
 
 1. Open [Element Web](https://app.element.io/) in a **private/incognito window** (Ctrl+Shift+N in Chrome, Ctrl+Shift+P in Firefox)
 2. Create an account on matrix.org or your homeserver
@@ -118,6 +120,52 @@ meshcore:
   channel_0_secret: "your_channel_0_secret_32_hex_chars"  # for private channel
   # tcp_poll_enabled: false  # enable if WiFi firmware doesn't push RX_LOG_DATA
 ```
+
+**TCP + MeshCore DM + E2EE (encrypted rooms, no access_token):**
+
+```yaml
+matrix:
+  homeserver: "https://matrix.example.com:8448"
+  # access_token: not needed – use mcmgate auth login (creates credentials.json)
+  bot_user_id: "@yourbot:matrix.example.com"
+  ignore_unverified_devices: true
+
+matrix_rooms:
+  - id: "!channelRoom:matrix.example.com"
+    meshcore_channel: 0
+  - id: "!anotherChannel:matrix.example.com"
+    meshcore_channel: 1
+
+meshcore_dm:
+  enabled: true
+  announce_on_start: true
+  # contact_rooms: pubkey → room(s). Shared room = in multiple contacts.
+  contact_rooms:
+    "contact1_pubkey_64_hex_chars":
+      - "!dmContact1:matrix.example.com"
+      - "!sharedRoom:matrix.example.com"
+    "contact2_pubkey_64_hex_chars":
+      - "!dmContact2:matrix.example.com"
+      - "!sharedRoom:matrix.example.com"
+  # matrix_to_meshcore_only: send-only Matrix→MeshCore (no receive)
+  matrix_to_meshcore_only:
+    "!sendOnlyRoom:matrix.example.com":
+      - "contact1_pubkey_64_hex_chars"
+      - "contact2_pubkey_64_hex_chars"
+  # node_public_key / node_private_key: optional – auto-fetched from device
+
+meshcore:
+  connection_type: tcp
+  host: "192.168.1.100"
+  port: 5000
+  meshnet_name: "My MeshCore"
+  broadcast_enabled: true
+  message_delay: 2.2
+  channel_0_secret: "your_channel_0_secret_32_hex_chars"
+  channel_1_secret: "your_channel_1_secret_32_hex_chars"
+```
+
+Run `mcmgate auth login` once, then start mcmgate. See [docs/E2EE.md](docs/E2EE.md).
 
 ### Platform Notes (Serial)
 

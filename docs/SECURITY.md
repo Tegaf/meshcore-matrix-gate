@@ -7,13 +7,6 @@
 - **E2EE store** (`~/.mcmgate/store/`): Matrix decryption keys. Keep private.
 - **Database** (`~/.mcmgate/data/meshcore.sqlite`): Node names (longname/shortname). Low sensitivity.
 
-## What MCMGate Does Not Do
-
-- Never logs passwords, tokens, or private keys
-- Uses YAML `SafeLoader` (no arbitrary code execution from config)
-- SQL queries are parameterized (no injection)
-- SSL/TLS for Matrix (certifi)
-- Config `prefix_format` only accepts `{long}`, `{short}`, `{mesh}` placeholders
 
 ## export_node_key.py
 

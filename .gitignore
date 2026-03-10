@@ -34,3 +34,6 @@ credentials.json
 *.log
 logs/
 
+# Local review (not for publish)
+REPO_CONTENTS.md
+
