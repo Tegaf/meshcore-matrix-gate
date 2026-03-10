@@ -1,6 +1,8 @@
 # Changelog
 
-## [0.2.0] - 2025-03-11
+## [0.2.0-beta1] - 2025-03-11
+
+**Beta release.** Full 0.2.0 when tested and stable.
 
 ### Added
 - **E2EE support:** `mcmgate auth login` for encrypted Matrix rooms (credentials.json)
@@ -33,3 +35,7 @@
 ### Removed
 - Hardcoded IPs, pubkeys, secrets from utility scripts
 - Czech strings from codebase
+
+## [0.2.0] - (planned)
+
+Same as beta1, promoted when stable.
