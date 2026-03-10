@@ -1,24 +1,62 @@
 # MCMGate config - MeshCore LoRa <-> Matrix bridge
 # Copy to ~/.mcmgate/config.yaml and fill in your values
+# Full reference: docs/CONFIG.md
 
 matrix:
   homeserver: "https://matrix.example.com:8448"
-  access_token: "YOUR_MATRIX_ACCESS_TOKEN"
+  # access_token: optional when using credentials.json (mcmgate auth login)
   bot_user_id: "@yourbot:matrix.example.com"
+  ignore_unverified_devices: false
 
-# Matrix rooms to bridge (get room ID from Element: room settings -> Advanced)
-# Different rooms can use different MeshCore channels (0, 1, …)
+# Matrix rooms → MeshCore channels (each room has its own channel)
+# Heltec WiFi: Matrix→MeshCore only works for channel 0
 matrix_rooms:
   - id: "!roomId:matrix.example.com"
-    meshcore_channel: 0   # Channel 0 = broadcast
+    meshcore_channel: 0
+  - id: "!anotherRoom:matrix.example.com"
+    meshcore_channel: 1
+
+# Optional: Matrix DMs (user DMs bot → MeshCore channel)
+matrix_dms:
+  enabled: false
+  default_channel: 0
+  recipients:
+    - user_id: "@user:matrix.example.com"
+      meshcore_channel: 0
+
+# MeshCore DM (device-to-device) ↔ Matrix
+# Serial/USB: CONTACT_MSG_RECV. WiFi: RX_LOG_DATA payload_type 2 (needs node keys)
+meshcore_dm:
+  enabled: true
+  # room_id: fallback for unknown senders (optional when using contact_rooms)
+  # contacts: optional – derived from contact_rooms + matrix_to_meshcore_only
+
+  # Map contact pubkey (64 hex) → Matrix room(s). Shared room = in multiple contacts.
+  # Replace placeholder pubkeys with real ones from check_contacts.py or MeshCore app.
+  contact_rooms:
+    "0000000000000000000000000000000000000000000000000000000000000001":  # contact 1
+      - "!roomA:matrix.example.com"
+      - "!sharedRoom:matrix.example.com"
+    "0000000000000000000000000000000000000000000000000000000000000002":  # contact 2
+      - "!roomB:matrix.example.com"
+      - "!sharedRoom:matrix.example.com"
+
+  # Send-only rooms: Matrix→MeshCore to listed contacts, no MeshCore→Matrix
+  matrix_to_meshcore_only:
+    "!sendOnlyRoom:matrix.example.com":
+      - "0000000000000000000000000000000000000000000000000000000000000001"
+      - "0000000000000000000000000000000000000000000000000000000000000002"
+
+  # announce_on_start: false (default) – set true to send "Bridge online"
+  # announce_skip_contacts: ["pubkey..."]  # exclude from announce
+
+  # node_public_key / node_private_key: optional – auto-fetched from device (TCP + USB)
+  # Add manually only if device returns DISABLED for export_private_key
 
 meshcore:
-  # TCP (WiFi firmware - Heltec with WiFi)
   connection_type: tcp
   host: "192.168.1.100"
   port: 5000
-
-  # Serial (USB firmware)
   # connection_type: serial
   # serial_port: "/dev/ttyUSB0"
   # baudrate: 115200
@@ -27,10 +65,7 @@ meshcore:
   broadcast_enabled: true
   message_delay: 2.2
 
-  # Channel secrets for LOG_DATA decryption (16 bytes hex each)
-  # Private channel - only devices with same secret can decrypt
   channel_0_secret: "your_channel_0_secret_32_hex_chars"
-  # channel_1_secret: "your_channel_1_secret_32_hex_chars"
+  channel_1_secret: "your_channel_1_secret_32_hex_chars"
 
-  # TCP poll - enable only if WiFi firmware doesn't push RX_LOG_DATA
   # tcp_poll_enabled: false

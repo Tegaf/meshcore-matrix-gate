@@ -4,6 +4,18 @@ MeshCore Matrix bridge. Inspired by mmrelay (Meshtastic), adapted for MeshCore p
 
 Tested on Raspberry Pi (Matrix) and Heltec V3 (MeshCore).
 
+## Quick Setup (5 steps)
+
+1. **Install:** `git clone ... && cd meshcore-matrix-gate && python -m venv .venv && .venv/bin/pip install -e .`
+2. **Create Matrix bot account** (e.g. @mcmgate-bot:matrix.org) and get access token (Element → Settings → Help & About)
+3. **Copy config:** `mkdir -p ~/.mcmgate && cp config.example.yaml ~/.mcmgate/config.yaml`
+4. **Edit** `~/.mcmgate/config.yaml` – set `homeserver`, `bot_user_id`, `access_token`, `matrix_rooms`, and `meshcore` (host/port for TCP or serial_port for USB)
+5. **Run:** `.venv/bin/mcmgate` (or `mcmgate` if using pipx)
+
+**Encrypted rooms:** Use `mcmgate auth login` instead of access_token. See [docs/E2EE.md](docs/E2EE.md).
+
+**Security:** Restrict config permissions: `chmod 600 ~/.mcmgate/config.yaml`. See [docs/SECURITY.md](docs/SECURITY.md).
+
 ## Screenshots
 
 ![Heltec room](docs/heltec-room.png)
@@ -33,7 +45,9 @@ You need a **bot account** for the relay. Create a dedicated Matrix account (e.g
 5. **Access token**: Settings → Help & About → scroll to bottom, expand Access Token and copy
 6. **Close the window** – do not log out. Logging out invalidates the token. After closing, the session stays active.
 
-> **Room encryption:** Matrix rooms with E2EE are not currently supported.
+7. **Room invites:** If you log in as the bot in Element (e.g. to get the token or verify devices), you may see invites to bridge rooms. **Accept the invite manually** – click Join. The bot cannot auto-join in some cases; after you accept, the bridge will work.
+
+> **Encrypted rooms (E2EE):** Use `mcmgate auth login` instead of access_token. See [docs/E2EE.md](docs/E2EE.md) for full setup.
 
 ### 2. Configuration
 
@@ -44,7 +58,16 @@ mkdir -p ~/.mcmgate
 cp config.example.yaml ~/.mcmgate/config.yaml
 ```
 
-Edit `~/.mcmgate/config.yaml` with your Matrix token, room ID, and MeshCore settings.
+Edit `~/.mcmgate/config.yaml` with your Matrix token, room ID, and MeshCore settings. **Restrict permissions:** `chmod 600 ~/.mcmgate/config.yaml`
+
+**Matrix auth (two options):**
+
+| Method | Use case |
+|--------|----------|
+| `access_token` in config | Unencrypted rooms; token from Element → Help & About |
+| `mcmgate auth login` | Encrypted rooms (E2EE); creates `credentials.json` (takes priority, `access_token` not needed) |
+
+For encrypted rooms, run `mcmgate auth login` once, enter the bot password, then restart mcmgate. See [docs/E2EE.md](docs/E2EE.md). Full config reference: [docs/CONFIG.md](docs/CONFIG.md).
 
 **Serial (USB):**
 
@@ -104,7 +127,11 @@ meshcore:
 
 `channel_0_secret` must be 32 hex characters (16 bytes). Use the same secret on all MeshCore devices in the channel.
 
-**Multiple channels:** Supported in direction **MeshCore → Matrix** (each room can receive from its own channel). In the opposite direction **Matrix → MeshCore**, only channel 0 is supported – Heltec WiFi firmware does not broadcast to other channels. Create channel 1 on Heltec and add `channel_1_secret` to config.
+**Multiple channels:** Supported in direction **MeshCore → Matrix** (each room can receive from its own channel). **Matrix → MeshCore:** Heltec WiFi firmware broadcasts only to channel 0. Rooms mapped to channel 1 or higher will not receive messages – firmware accepts the command (returns OK) but does not broadcast on channel 1+. Verified by testing. Use serial/USB for multi-channel Matrix→MeshCore, or keep channel 1+ for MeshCore→Matrix only.
+
+**Matrix DMs:** Optional. `matrix_dms.enabled: true` – when a user DMs the bot, messages relay to MeshCore on `default_channel`. Add `recipients` to send MeshCore channel messages to specific Matrix users as DMs.
+
+**MeshCore DM:** Optional. `meshcore_dm.enabled: true` – device-to-device MeshCore messages relay to Matrix. Use `contact_rooms` to map each contact (pubkey) to Matrix room(s). `contacts` is optional – derived from contact_rooms. **Shared rooms:** A room in multiple contacts' lists sends to all of them. **matrix_to_meshcore_only:** Rooms that only send Matrix→MeshCore (no receive). **Announce:** `announce_on_start: true` explicitly enables "Bridge online" (default is false); `announce_skip_contacts` excludes specific contacts. See [docs/CONFIG.md](docs/CONFIG.md) for full reference.
 
 ## Running
 

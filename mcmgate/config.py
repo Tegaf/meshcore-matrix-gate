@@ -41,3 +41,38 @@ def load_config(config_file=None, args=None):
                 logging.getLogger("mcmgate").error(f"Config load error: {e}")
                 return {}
     return {}
+
+
+CREDENTIALS_FILENAME = "credentials.json"
+
+
+def get_credentials_path():
+    """Path to Matrix credentials.json (mmrelay-style, for E2EE)."""
+    return os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
+
+
+def load_credentials():
+    """Load Matrix credentials from credentials.json. Returns dict or None."""
+    path = get_credentials_path()
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r") as f:
+            import json
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def save_credentials(creds: dict) -> bool:
+    """Save Matrix credentials to credentials.json. Returns True on success."""
+    path = get_credentials_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            import json
+            json.dump(creds, f, indent=2)
+        os.chmod(path, 0o600)
+        return True
+    except Exception:
+        return False

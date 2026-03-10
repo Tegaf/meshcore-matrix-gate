@@ -24,6 +24,7 @@ build/
 
 # Local config (never commit real credentials)
 config.yaml
+credentials.json
 
 # Database (local state)
 *.db
