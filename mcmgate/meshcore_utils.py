@@ -23,6 +23,7 @@ from mcmgate.log_utils import get_logger
 
 config = None
 matrix_rooms: List[dict] = []
+_dm_key_store = None  # MeshCoreKeyStore for RX_LOG_DATA TEXT_MSG decryption
 
 logger = get_logger(name="MeshCore")
 
@@ -31,7 +32,7 @@ _recently_sent_to_meshcore: dict[str, float] = {}  # normalized text -> timestam
 _recently_sent_hashes: dict[str, float] = {}  # hash(content) -> timestamp (more robust)
 _SENT_EXPIRE_SEC = 120
 
-# Deduplication: content hash – Tegaf Mobile sends same message 2x
+# Deduplication: content hash – mobile app may send same message 2x
 _recently_relayed_hash: dict[str, float] = {}  # hash(normalized_content) -> timestamp
 _RELAY_DEDUP_SEC = 90
 _relay_lock = asyncio.Lock()
@@ -60,19 +61,78 @@ def register_sent_to_meshcore(text: str) -> None:
                 del d[k]
 
 
+def _get_contacts_list(dm_cfg: dict) -> list:
+    """Contacts from config or derived from contact_rooms + matrix_to_meshcore_only."""
+    contacts = dm_cfg.get("contacts", []) or dm_cfg.get("peer_public_keys", [])
+    if contacts:
+        return contacts
+    seen = set()
+    result = []
+    for pk in (dm_cfg.get("contact_rooms", {}) or {}).keys():
+        if isinstance(pk, str) and len(pk) == 64 and pk.lower() not in seen:
+            seen.add(pk.lower())
+            result.append(pk)
+    for pubkeys in (dm_cfg.get("matrix_to_meshcore_only", {}) or {}).values():
+        for item in (pubkeys if isinstance(pubkeys, list) else [pubkeys]):
+            pk = (item.get("pubkey", item) if isinstance(item, dict) else str(item)).strip()
+            if len(pk) == 64 and pk.lower() not in seen:
+                seen.add(pk.lower())
+                result.append(pk)
+    return result
+
+
+def get_dm_reply_pubkey(cfg: Optional[dict] = None) -> Optional[str]:
+    """Get first contact pubkey for Matrix->MeshCore DM reply. Returns 64-char hex or None."""
+    cfg = cfg or config
+    dm_cfg = (cfg or {}).get("meshcore_dm", {})
+    if not dm_cfg.get("enabled"):
+        return None
+    contacts = _get_contacts_list(dm_cfg)
+    if not isinstance(contacts, list):
+        return None
+    for item in contacts:
+        if isinstance(item, str) and len(item) == 64 and all(c in "0123456789abcdefABCDEF" for c in item):
+            return item
+    global _dm_key_store
+    if _dm_key_store and hasattr(_dm_key_store, "peer_public_keys") and _dm_key_store.peer_public_keys:
+        return next(iter(_dm_key_store.peer_public_keys), None)
+    return None
+
+
+def get_dm_reply_pubkeys_for_room(room_id: str, room_localpart: str, cfg: Optional[dict] = None) -> list:
+    """Get all contact pubkeys for Matrix->MeshCore DM when message is from given room.
+    Room can be in multiple contacts (shared) → returns all. Falls back to first contact if none."""
+    cfg = cfg or config
+    dm_cfg = (cfg or {}).get("meshcore_dm", {})
+    if not dm_cfg.get("enabled"):
+        return []
+    result = []
+    for pk, rid in (dm_cfg.get("contact_rooms", {}) or {}).items():
+        for r in (rid if isinstance(rid, list) else [rid]):
+            if r and (r == room_id or (r.split(":")[0] if ":" in r else r) == room_localpart):
+                if isinstance(pk, str) and len(pk) == 64 and all(c in "0123456789abcdefABCDEF" for c in pk):
+                    result.append(pk)
+                break
+    if not result:
+        first = get_dm_reply_pubkey(cfg)
+        if first:
+            result = [first]
+    return result
+
+
 def _was_recently_sent_to_meshcore(text: str) -> bool:
     """Was this message recently sent from Matrix to MeshCore?"""
     now = time.time()
     key = _normalize_text(text)
     if not key:
         return False
-    # Content after first ":" – "Tegaf Gate: Miroslav: text" → "Miroslav: text"
+    # Content after first ":" – "Device: User: text" → "User: text"
     content = key.split(":", 1)[1].strip() if ":" in key else key
     # Direct match: received content == sent message (echo from mesh)
     if content and content in _recently_sent_to_meshcore:
         if now - _recently_sent_to_meshcore[content] <= _SENT_EXPIRE_SEC:
             return True
-    # Hash-based: content "Miroslav: text" or "Tegaf Gate: Miroslav: text" → content
+    # Hash-based: content "User: text" or "Device: User: text" → content
     if content:
         h = sha256(content.encode("utf-8")).hexdigest()[:16]
         if h in _recently_sent_hashes and now - _recently_sent_hashes[h] <= _SENT_EXPIRE_SEC:
@@ -97,12 +157,195 @@ def _was_recently_sent_to_meshcore(text: str) -> bool:
     return False
 
 
+def _add_meshcore_shared_secrets(key_store, priv_hex: str) -> None:
+    """Pre-compute X25519 shared secrets using MeshCore expanded key format.
+    MeshCore exports orlp/ed25519 format: first 32 bytes = scalar for X25519 (not standard seed).
+    meshcoredecoder's node_keys path fails; shared_secrets bypass works."""
+    try:
+        from cryptography.hazmat.primitives.asymmetric import x25519
+
+        priv_bytes = bytes.fromhex(priv_hex)
+        if len(priv_bytes) < 32:
+            return
+        scalar = bytearray(priv_bytes[:32])
+        scalar[0] &= 248
+        scalar[31] &= 63
+        scalar[31] |= 64
+        x25519_priv = x25519.X25519PrivateKey.from_private_bytes(bytes(scalar))
+
+        try:
+            from nacl.bindings import crypto_sign_ed25519_pk_to_curve25519
+        except ImportError:
+            logger.debug("MeshCore DM: PyNaCl not installed, skipping shared_secrets precompute")
+            return
+
+        for peer_pub in key_store.peer_public_keys:
+            try:
+                peer_bytes = bytes.fromhex(peer_pub)
+                if len(peer_bytes) < 32:
+                    continue
+                peer_x25519 = crypto_sign_ed25519_pk_to_curve25519(peer_bytes[:32])
+                x25519_pub = x25519.X25519PublicKey.from_public_bytes(peer_x25519)
+                shared = x25519_priv.exchange(x25519_pub)
+                key_store.add_shared_secret(peer_pub, shared.hex())
+            except Exception as e:
+                logger.debug(f"MeshCore DM: shared secret for {peer_pub[:16]}... failed: {e}")
+        if key_store.shared_secrets:
+            logger.info(f"MeshCore DM: precomputed {len(key_store.shared_secrets)} shared secret(s)")
+    except Exception as e:
+        logger.debug(f"MeshCore DM: shared secrets setup failed: {e}")
+
+
+async def _setup_dm_key_store(mc, cfg) -> None:
+    """Setup DM key store for RX_LOG_DATA TEXT_MSG decryption (TCP/WiFi only).
+    Auto-fetches: node key from device. Peer keys from config contacts (pubkeys only)."""
+    global _dm_key_store
+    _dm_key_store = None
+    dm_cfg = (cfg or {}).get("meshcore_dm", {})
+    if not dm_cfg.get("enabled"):
+        return
+    try:
+        from meshcoredecoder.crypto import MeshCoreKeyStore
+
+        key_store = MeshCoreKeyStore()
+
+        # Node public key: config override, or from device self_info
+        pub_hex = dm_cfg.get("node_public_key")
+        if not pub_hex and mc and mc.self_info:
+            pub_hex = mc.self_info.get("public_key", "")
+
+        # Node private key: config override, or try export from device
+        priv_hex = dm_cfg.get("node_private_key")
+        if not priv_hex and mc and hasattr(mc.commands, "export_private_key"):
+            try:
+                from meshcore import EventType
+
+                res = await mc.commands.export_private_key()
+                if res and res.type == EventType.PRIVATE_KEY and res.payload.get("private_key"):
+                    priv_hex = res.payload["private_key"].hex()
+                    logger.info("MeshCore DM: node private key exported from device")
+            except Exception as e:
+                logger.debug(f"export_private_key failed: {e}")
+
+        if pub_hex and priv_hex and len(pub_hex) == 64 and len(priv_hex) == 128:
+            key_store.add_node_key(pub_hex, priv_hex)
+            src = "config" if dm_cfg.get("node_private_key") else "device export"
+            logger.info(f"MeshCore DM: node key loaded for decryption (from {src})")
+        elif not (pub_hex and priv_hex):
+            logger.debug("MeshCore DM: no node key (add node_public_key + node_private_key to config if export disabled)")
+
+        # Peer keys: from contacts or derived from contact_rooms + matrix_to_meshcore_only
+        contact_pubkeys = _get_contacts_list(dm_cfg)
+        for item in contact_pubkeys:
+            pk = (item.get("pubkey", item) if isinstance(item, dict) else item)
+            if not isinstance(pk, str):
+                continue
+            pk = pk.strip()
+            if len(pk) == 64 and all(c in "0123456789abcdefABCDEF" for c in pk):
+                key_store.add_peer_public_key(pk)
+            else:
+                logger.warning(f"MeshCore DM: invalid contact '{pk[:32]}...' – expected pubkey 64 hex chars")
+
+        if key_store.peer_public_keys:
+            logger.info(f"MeshCore DM: {len(key_store.peer_public_keys)} contacts for DM")
+
+        # Pre-compute shared secrets using MeshCore key format (orlp/ed25519 expanded).
+        # meshcoredecoder expects standard Ed25519 seed; MeshCore exports expanded format.
+        # First 32 bytes of priv = X25519 scalar. Pre-compute and add to shared_secrets.
+        if pub_hex and priv_hex and len(priv_hex) == 128:
+            _add_meshcore_shared_secrets(key_store, priv_hex)
+
+        if key_store.node_keys or key_store.shared_secrets:
+            _dm_key_store = key_store
+    except Exception as e:
+        logger.warning(f"MeshCore DM key store setup failed: {e}")
+
+
+async def _announce_dm_contacts(mc, cfg) -> None:
+    """Send a DM to each meshcore_dm contact on startup so this device appears in their list."""
+    dm_cfg = (cfg or {}).get("meshcore_dm", {})
+    if not dm_cfg.get("enabled") or not dm_cfg.get("announce_on_start", False):
+        return
+    if not mc or not hasattr(mc.commands, "send_msg"):
+        return
+    contacts = _get_contacts_list(dm_cfg)
+    if not contacts:
+        return
+    skip = set()
+    for item in dm_cfg.get("announce_skip_contacts", []) or []:
+        pk = (item.get("pubkey", item) if isinstance(item, dict) else str(item)).strip()
+        if len(pk) == 64 and all(c in "0123456789abcdefABCDEF" for c in pk):
+            skip.add(pk.lower())
+    name = (mc.self_info or {}).get("adv_name", "Bridge") if mc.self_info else "Bridge"
+    msg = f"{name} online"
+    for item in contacts:
+        if not isinstance(item, str):
+            continue
+        pk = item.strip()
+        if len(pk) != 64 or not all(c in "0123456789abcdefABCDEF" for c in pk):
+            continue
+        if pk.lower() in skip:
+            continue
+        try:
+            await asyncio.sleep(0.5)
+            register_sent_to_meshcore(msg)
+            result = await mc.commands.send_msg(pk, msg)
+            if result and result.type == EventType.ERROR:
+                logger.debug(f"MeshCore DM announce to {pk[:16]}... failed: {result.payload}")
+            else:
+                logger.info(f"MeshCore DM: sent announce to contact {pk[:16]}... (shows in their list)")
+        except Exception as e:
+            logger.debug(f"MeshCore DM announce failed: {e}")
+
+
+def _try_decrypt_rx_log_dm(payload: dict) -> tuple[str | None, str]:
+    """Try to decrypt RX_LOG_DATA payload_type 2 (TEXT_MSG/DM). Returns (text, sender_prefix) or (None, '?')."""
+    global _dm_key_store
+    if not _dm_key_store:
+        return None, "?"
+    raw_payload = payload.get("payload")
+    if not raw_payload or isinstance(raw_payload, str):
+        raw_hex = raw_payload if isinstance(raw_payload, str) else (raw_payload.hex() if raw_payload else "")
+    else:
+        raw_hex = raw_payload.hex() if hasattr(raw_payload, "hex") else ""
+    if not raw_hex or len(raw_hex) < 8:
+        return None, "?"
+    try:
+        from meshcoredecoder import MeshCoreDecoder
+        from meshcoredecoder.crypto import MeshCoreKeyStore
+        from meshcoredecoder.types.crypto import DecryptionOptions
+        from meshcoredecoder.types.enums import PayloadType
+
+        options = DecryptionOptions(key_store=_dm_key_store)
+        packet = MeshCoreDecoder.decode(raw_hex, options)
+        if not packet or packet.payload_type != PayloadType.TextMessage:
+            return None, "?"
+        tm = packet.payload.get("decoded")
+        if not tm:
+            return None, "?"
+        if not getattr(tm, "decrypted", None):
+            logger.warning(
+                f"DM decrypt: packet decoded but decrypted=None "
+                f"(dest_hash={getattr(tm,'destination_hash','?')} src_hash={getattr(tm,'source_hash','?')})"
+            )
+            return None, "?"
+        dec = tm.decrypted
+        msg = dec.get("message", "")
+        if not msg:
+            return None, "?"
+        src_hash = getattr(tm, "source_hash", "").upper()
+        return msg, src_hash if src_hash else "?"
+    except Exception as e:
+        logger.warning(f"DM decrypt failed: {e}")
+        return None, "?"
+
+
 def _content_hash(text: str) -> str:
     """Hash of normalized content for deduplication."""
     key = _normalize_text(text)
     if not key:
         return ""
-    # Use content (after first ": ") – "Tegaf Mobile: xcvcxv" → "xcvcxv"
+    # Use content (after first ": ") – "Device: message" → "message"
     content = key.split(":", 1)[1].strip() if ":" in key else key
     return sha256(content.encode("utf-8")).hexdigest()[:16] if content else ""
 
@@ -145,6 +388,7 @@ FRAME_RECV = 0x3E
 # Commands
 CMD_GET_MSG = 0x0A
 CMD_SEND_CHAN_MSG = 0x03
+CMD_SEND_MSG = 0x02  # DM to contact
 
 
 def _send_frame(transport, data: bytes) -> None:
@@ -177,6 +421,37 @@ class MeshCoreDirectCommands:
         )
         if result.type == EventType.ERROR and result.payload.get("reason") == "timeout":
             return Event(EventType.OK, {})  # fire-and-forget, assume success
+        return result
+
+    async def send_msg(
+        self, dst: "str | bytes | dict", msg: str, timestamp: Optional[int] = None, attempt: int = 0
+    ) -> Event:
+        """Send DM to contact. dst: pubkey hex (64 chars) or contact dict with public_key."""
+        msg = msg[:220] if len(msg) > 220 else msg
+        if timestamp is None:
+            timestamp = int(time.time())
+        if isinstance(dst, dict):
+            dst_bytes = bytes.fromhex(dst.get("public_key", ""))[:6]
+        elif isinstance(dst, str):
+            dst_bytes = bytes.fromhex(dst)[:6]
+        else:
+            dst_bytes = dst[:6] if isinstance(dst, bytes) else b""
+        if len(dst_bytes) < 6:
+            return Event(EventType.ERROR, {"reason": "invalid_destination"})
+        timestamp_bytes = timestamp.to_bytes(4, "little")
+        data = (
+            bytes([CMD_SEND_MSG, 0x00])
+            + attempt.to_bytes(1, "little")
+            + timestamp_bytes
+            + dst_bytes
+            + msg.encode("utf-8")
+        )
+        await asyncio.sleep(0.3)
+        result = await self._client._send_and_wait(
+            data, [EventType.MSG_SENT, EventType.OK, EventType.ERROR], timeout=5.0
+        )
+        if result.type == EventType.ERROR and result.payload.get("reason") == "timeout":
+            return Event(EventType.MSG_SENT, {})
         return result
 
     async def get_msg(self, timeout: Optional[float] = 5.0) -> Event:
@@ -496,6 +771,8 @@ async def connect_meshcore(passed_config=None, force_connect=False):
                             }
                             logger.info(f"MeshCore channel {idx} fallback: hash={observed_hash}")
                             next_slot += 1
+                    # DM decryption for RX_LOG_DATA payload_type 2 (TEXT_MSG)
+                    await _setup_dm_key_store(meshcore_client, config)
             elif connection_type == "ble":
                 from meshcore import MeshCore
 
@@ -544,6 +821,9 @@ async def connect_meshcore(passed_config=None, force_connect=False):
                 _tcp_poll_task = asyncio.create_task(_tcp_poll_messages_loop(meshcore_client))
                 logger.info("TCP message polling started")
 
+            # Send DM to contacts so this device appears in their list (e.g. Tegaf Mobile)
+            await _announce_dm_contacts(meshcore_client, config)
+
             name = meshcore_client.self_info.get("adv_name", "unknown") if meshcore_client.self_info else "unknown"
             logger.info(f"Connected to MeshCore: {name}")
             return meshcore_client
@@ -565,6 +845,9 @@ async def on_meshcore_message(event):
 
     # RX_LOG_DATA: WiFi/TCP firmware returns raw RF data, reader decrypts to "message"
     if event.type == EventType.RX_LOG_DATA:
+        pt = payload.get("payload_type")
+        if pt == 2:
+            logger.info("RX_LOG_DATA: payload_type=2 (DM) received, attempting decrypt")
         text = payload.get("message", "")
         # Derive channel from chan_hash – RX_LOG_DATA does not include channel_idx
         chan_hash = payload.get("chan_hash", "")
@@ -590,24 +873,42 @@ async def on_meshcore_message(event):
             logger.info(f"RX_LOG_DATA channel={channel} chan_hash={chan_hash} chan_name={chan_name!r} text={text[:40]!r}")
         sender = "?"
         path_len = payload.get("path_len", 1)  # 0 = likely echo of our broadcast
+        is_meshcore_dm = False
         if not text:
             pt = payload.get("payload_type")
-            if pt == 0x05:  # channel msg but failed to decrypt
+            if pt == 2:
+                # TEXT_MSG/DM – try decrypt with meshcoredecoder
+                text, sender = _try_decrypt_rx_log_dm(payload)
+                if text:
+                    is_meshcore_dm = True
+                    logger.info(f"RX_LOG_DATA: decrypted DM from {sender}: {text[:40]!r}")
+                else:
+                    logger.warning("RX_LOG_DATA: payload_type=2 (DM) decrypt failed – check node_public_key/node_private_key in config")
+            elif pt == 0x05:  # channel msg but failed to decrypt
                 ch = payload.get("chan_hash", "?")
                 logger.warning(
                     f"RX_LOG_DATA: message from channel hash={ch} - check channel_0_secret in config matches other devices"
                 )
+            elif pt == 4 and _dm_key_store and not _get_contacts_list(config.get("meshcore_dm", {})):
+                # Advert: learn peer pubkey (only when we have no contacts in config)
+                adv_key = payload.get("adv_key", "")
+                if adv_key and len(adv_key) == 64 and adv_key not in (p.upper() for p in _dm_key_store.peer_public_keys):
+                    _dm_key_store.add_peer_public_key(adv_key)
+                    logger.debug(f"MeshCore DM: learned peer from Advert {adv_key[:16]}...")
             elif pt is not None:
-                logger.debug(f"RX_LOG_DATA: payload_type={pt} (5=channel), no message")
+                logger.debug(f"RX_LOG_DATA: payload_type={pt}, no message")
     else:
         text = payload.get("text", "")
-        path_len = 1  # CHANNEL_MSG_RECV has no path_len
+        path_len = payload.get("path_len", 1)
         if event.type == EventType.CHANNEL_MSG_RECV:
             channel = payload.get("channel_idx", 0)
             sender = payload.get("pubkey_prefix", "?") or "?"
+            is_meshcore_dm = False
         else:
+            # CONTACT_MSG_RECV = MeshCore DM (device-to-device)
             channel = 0
             sender = payload.get("pubkey_prefix", "?") or "?"
+            is_meshcore_dm = payload.get("type") == "PRIV" or event.type == EventType.CONTACT_MSG_RECV
 
     if not text:
         return
@@ -627,8 +928,9 @@ async def on_meshcore_message(event):
             logger.info(f"[DEBUG] LOOP_MATCH: received {text[:40]!r} matched sent set")
         return
 
-    # path_len 0 = Heltec received own broadcast (radio echo) – always skip
-    if event.type == EventType.RX_LOG_DATA and path_len == 0:
+    # path_len 0 = Heltec received own broadcast (radio echo) – skip for channel msgs only.
+    # DM from contact (is_meshcore_dm, sender=DF) is not our echo – relay it.
+    if event.type == EventType.RX_LOG_DATA and path_len == 0 and not is_meshcore_dm:
         logger.info(f"Skip relay (path_len=0, own echo): {text[:60]!r}")
         return
 
@@ -646,21 +948,35 @@ async def on_meshcore_message(event):
         # Skip messages from our device (echo of our broadcast) - only relevant for CONTACT_MSG
         if sender != "?" and meshcore_client and meshcore_client.self_info:
             pk = meshcore_client.self_info.get("public_key", "")
-            our_prefix = pk[:12].lower() if len(pk) >= 12 else ""
-            if our_prefix and sender.lower() == our_prefix:
+            # sender is pubkey_prefix (typically 2 hex chars); match against our pubkey
+            if pk and (sender or "").lower() and pk.lower().startswith((sender or "").lower()):
                 logger.info(f"Skip relay (own device): {text[:60]!r}")
                 return
 
         if event.type == EventType.RX_LOG_DATA:
             logger.info(f"MeshCore message (LOG): {text[:60]!r}")
+        elif is_meshcore_dm:
+            logger.info(f"MeshCore DM from {sender}: {text[:60]!r}")
 
-        channel_mapped = any(
-            r.get("meshcore_channel", r.get("meshtastic_channel")) == channel
-            for r in matrix_rooms
-        )
-        if not channel_mapped:
-            logger.info(f"Skip relay: channel={channel} not mapped (rooms want {[r.get('meshcore_channel', r.get('meshtastic_channel')) for r in matrix_rooms]})")
-            return
+        # MeshCore DM: relay to meshcore_dm destination (room and/or recipients)
+        meshcore_dm_cfg = config.get("meshcore_dm", {})
+        if is_meshcore_dm:
+            if not meshcore_dm_cfg.get("enabled"):
+                logger.debug("MeshCore DM: disabled in config, skipping")
+                return
+            # Will relay to meshcore_dm.room_id and/or meshcore_dm.recipients
+        else:
+            # Channel message: require channel mapping
+            channel_mapped = any(
+                r.get("meshcore_channel", r.get("meshtastic_channel")) == channel
+                for r in matrix_rooms
+            ) or any(
+                r.get("meshcore_channel", 0) == channel
+                for r in config.get("matrix_dms", {}).get("recipients", [])
+            )
+            if not channel_mapped:
+                logger.info(f"Skip relay: channel={channel} not mapped (rooms want {[r.get('meshcore_channel', r.get('meshtastic_channel')) for r in matrix_rooms]})")
+                return
 
         longname = get_longname(sender) or sender
         shortname = get_shortname(sender) or sender
@@ -675,26 +991,80 @@ async def on_meshcore_message(event):
 
         meshnet_name = config.get("meshcore", {}).get("meshnet_name", "MeshCore")
 
-        from mcmgate.matrix_utils import get_matrix_prefix, matrix_relay
+        from mcmgate.matrix_utils import get_matrix_prefix, matrix_relay, matrix_relay_dm
 
         prefix = get_matrix_prefix(config, longname, shortname, meshnet_name)
         formatted_message = f"{prefix}{text}"
 
-        logger.info(f"Relaying MeshCore message from {longname} to Matrix ({len([r for r in matrix_rooms if r.get('meshcore_channel', r.get('meshtastic_channel')) == channel])} rooms)")
+        if is_meshcore_dm:
+            # MeshCore DM → Matrix: room(s) and/or recipients
+            # contact_rooms: map pubkey → room_id (different contacts → different rooms)
+            # room_id: default when no contact-specific mapping
+            contact_rooms = meshcore_dm_cfg.get("contact_rooms", {}) or {}
+            default_room = meshcore_dm_cfg.get("room_id")
+            dm_recipients = meshcore_dm_cfg.get("recipients", [])
 
-        for room in matrix_rooms:
-            if room.get("meshcore_channel", room.get("meshtastic_channel")) == channel:
-                logger.info(f"Sending to room {room['id']}")
-                await matrix_relay(
-                    room["id"],
-                    formatted_message,
-                    longname,
-                    shortname,
-                    meshnet_name,
-                    "TEXT_MESSAGE_APP",
-                    meshtastic_id=None,
-                    meshtastic_text=text,
-                )
+            # Resolve room(s) for this sender (source_hash = first byte of pubkey)
+            # contact_rooms: pubkey -> room_id or [room_id, ...]
+            rooms_to_send = []
+            sender_upper = (sender or "?").upper()
+            for item in _get_contacts_list(meshcore_dm_cfg):
+                pk = (item.get("pubkey", item) if isinstance(item, dict) else str(item))
+                pk = (pk or "").strip()
+                if len(pk) >= 2 and pk[:2].upper() == sender_upper:
+                    rid = contact_rooms.get(pk) or contact_rooms.get(pk.upper()) or contact_rooms.get(pk.lower())
+                    if rid:
+                        rooms_to_send.extend(rid if isinstance(rid, list) else [rid])
+                    break
+            if not rooms_to_send and default_room:
+                rooms_to_send = [default_room]
+            rooms_to_send = list(dict.fromkeys(rooms_to_send))  # dedupe
+
+            logger.info(
+                f"Relaying MeshCore DM from {longname} to Matrix "
+                f"(rooms={len(rooms_to_send)}, recipients={len(dm_recipients)})"
+            )
+            for dm_room_id in rooms_to_send:
+                if dm_room_id:
+                    await matrix_relay(
+                        dm_room_id,
+                        formatted_message,
+                        longname,
+                        shortname,
+                        meshnet_name,
+                        "TEXT_MESSAGE_APP",
+                        meshtastic_id=None,
+                        meshtastic_text=text,
+                    )
+            for user_id in dm_recipients:
+                if isinstance(user_id, dict):
+                    user_id = user_id.get("user_id", "")
+                if user_id:
+                    await matrix_relay_dm(user_id, formatted_message, longname, shortname, meshnet_name, meshtastic_text=text)
+        else:
+            # Channel message → Matrix rooms and optional matrix_dms recipients
+            room_count = len([r for r in matrix_rooms if r.get("meshcore_channel", r.get("meshtastic_channel")) == channel])
+            dm_recipients = [r for r in config.get("matrix_dms", {}).get("recipients", []) if r.get("meshcore_channel", 0) == channel]
+            logger.info(f"Relaying MeshCore message from {longname} to Matrix ({room_count} rooms, {len(dm_recipients)} DMs)")
+
+            for room in matrix_rooms:
+                if room.get("meshcore_channel", room.get("meshtastic_channel")) == channel:
+                    logger.info(f"Sending to room {room['id']}")
+                    await matrix_relay(
+                        room["id"],
+                        formatted_message,
+                        longname,
+                        shortname,
+                        meshnet_name,
+                        "TEXT_MESSAGE_APP",
+                        meshtastic_id=None,
+                        meshtastic_text=text,
+                    )
+
+            for rec in dm_recipients:
+                user_id = rec.get("user_id")
+                if user_id:
+                    await matrix_relay_dm(user_id, formatted_message, longname, shortname, meshnet_name, meshtastic_text=text)
 
 
 def send_channel_message(interface, text: str, channel: int = 0, **kwargs) -> None:
