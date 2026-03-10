@@ -2,6 +2,8 @@
 
 MeshCore Matrix bridge. Inspired by mmrelay (Meshtastic), adapted for MeshCore protocol. GPL-3.0.
 
+**Current: v0.2.0-beta1** (beta – report issues; full 0.2.0 when stable)
+
 Tested on Raspberry Pi (Matrix) and Heltec V3 (MeshCore).
 
 ## Quick Setup (5 steps)
