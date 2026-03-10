@@ -33,10 +33,8 @@ For **encrypted Matrix rooms**, the bot must decrypt messages to relay them to M
 5. On first run after login, the bot syncs and receives E2EE keys.
 
 6. **Encrypted groups – each sender must allow the bot:** For the bot to decrypt messages, each user who sends in the room must either:
-   - **Verify the bot:** In the room, click on the bot (e.g. meshtbot2) → Verify → complete emoji/decimal verification, or
-   - **Allow unverified devices:** Element → Settings → Security & Privacy → turn off "Never send to unverified devices"
-
-Without this, senders will not share session keys with the bot and you will see "undecryptable message" in logs.
+   - **Verify the bot:** In the room, click on the bot (e.g. meshtbot) → Verify → complete emoji/decimal verification, or
+  
 
 ## How It Works
 

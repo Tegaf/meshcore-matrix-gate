@@ -26,7 +26,6 @@
 - `send_dm.py`: pubkey as required argument (no hardcoded values)
 - `config.example.yaml`: generic placeholders, no personal data
 - README: E2EE, MeshCore DM, security notes, chmod 600
-- All code and docs in English
 
 ### Fixed
 - Own-device echo detection: correct pubkey_prefix matching (was pk[:12], now startswith)
