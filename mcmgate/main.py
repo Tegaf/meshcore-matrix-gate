@@ -10,7 +10,7 @@ from nio.events.room_events import MegolmEvent, RoomMemberEvent
 from mcmgate import __version__
 from mcmgate.db_utils import initialize_database
 from mcmgate.log_utils import get_logger
-from mcmgate.matrix_utils import connect_matrix, join_matrix_room, on_room_message, _on_megolm_event
+from mcmgate.matrix_utils import connect_matrix, join_matrix_room, on_room_message, on_invite, _on_megolm_event
 from mcmgate.meshcore_utils import connect_meshcore, check_connection
 from mcmgate.message_queue import get_message_queue, start_message_queue, stop_message_queue
 
@@ -43,6 +43,19 @@ async def main(cfg):
     matrix_rooms = cfg["matrix_rooms"]
     meshcore_utils.event_loop = asyncio.get_event_loop()
 
+    # Rooms to join: matrix_rooms + meshcore_dm room(s) + contact_rooms
+    rooms_to_join = list(matrix_rooms)
+    meshcore_dm_cfg = cfg.get("meshcore_dm", {})
+    if meshcore_dm_cfg.get("enabled") and meshcore_dm_cfg.get("room_id"):
+        rooms_to_join.append({"id": meshcore_dm_cfg["room_id"]})
+    for rid in meshcore_dm_cfg.get("contact_rooms", {}).values():
+        for r in (rid if isinstance(rid, list) else [rid]):
+            if r and not any(x.get("id") == r for x in rooms_to_join):
+                rooms_to_join.append({"id": r})
+    for m2m_room in meshcore_dm_cfg.get("matrix_to_meshcore_only", {}).keys():
+        if m2m_room and not any(x.get("id") == m2m_room for x in rooms_to_join):
+            rooms_to_join.append({"id": m2m_room})
+
     initialize_database()
 
     message_delay = cfg.get("meshcore", {}).get("message_delay", 2.2)
@@ -60,8 +73,24 @@ async def main(cfg):
         logger.error("Failed to connect to Matrix")
         return 1
 
-    for room in matrix_rooms:
+    for room in rooms_to_join:
         await join_matrix_room(matrix_client, room)
+
+    # Initial sync (mmrelay-style) – populates client.rooms for room_send
+    sync_resp = await matrix_client.sync(timeout=30000, full_state=True)
+    if hasattr(sync_resp, "next_batch") and sync_resp.next_batch:
+        logger.info("Matrix initial sync done, rooms ready")
+
+    # Conduit sync may not populate client.rooms – use joined_rooms() API and add rooms manually
+    from nio import MatrixRoom
+    from nio.responses import JoinedRoomsError
+    jr = await matrix_client.joined_rooms()
+    if not isinstance(jr, JoinedRoomsError) and hasattr(jr, "joined_rooms"):
+        for rid in jr.joined_rooms:
+            if rid not in matrix_client.rooms:
+                matrix_client.rooms[rid] = MatrixRoom(rid, matrix_client.user_id, encrypted=True)
+                await matrix_client.joined_members(rid)
+        logger.info(f"Matrix joined rooms: {jr.joined_rooms[:5]}" + ("..." if len(jr.joined_rooms) > 5 else ""))
 
     matrix_client.add_event_callback(
         on_room_message,
@@ -69,6 +98,7 @@ async def main(cfg):
     )
     matrix_client.add_event_callback(on_room_message, ReactionEvent)
     matrix_client.add_event_callback(_on_megolm_event, MegolmEvent)
+    matrix_client.add_event_callback(on_invite, RoomMemberEvent)
 
     shutdown_event = asyncio.Event()
 
@@ -80,7 +110,8 @@ async def main(cfg):
 
     get_message_queue().ensure_processor_started()
     asyncio.create_task(check_connection())
-    asyncio.create_task(_periodic_matrix_rejoin(matrix_client, matrix_rooms, shutdown_event))
+    # Periodic re-join disabled – caused M_BAD_JSON with Conduit; initial join is enough
+    # asyncio.create_task(_periodic_matrix_rejoin(matrix_client, rooms_to_join, shutdown_event))
 
     logger.info("MCMGate running. Matrix <-> MeshCore bridge active.")
 
