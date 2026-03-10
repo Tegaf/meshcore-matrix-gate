@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcmgate"
-version = "0.2.0"
+version = "0.2.0-beta1"
 description = "MeshCore Matrix bridge. Inspired by mmrelay (Meshtastic), adapted for MeshCore protocol. GPL-3.0."
 readme = "README.md"
 requires-python = ">=3.10"
