@@ -9,7 +9,8 @@ matrix:
   ignore_unverified_devices: false
 
 # Matrix rooms → MeshCore channels (each room has its own channel)
-# Heltec WiFi: Matrix→MeshCore only works for channel 0
+# Heltec WiFi: Matrix→MeshCore only works for channel 0.
+# ⚠️ Channel 0 MUST be public (LongFast). Private at slot 0 → messages leak to all private groups.
 matrix_rooms:
   - id: "!roomId:matrix.example.com"
     meshcore_channel: 0
@@ -65,7 +66,7 @@ meshcore:
   broadcast_enabled: true
   message_delay: 2.2
 
-  channel_0_secret: "your_channel_0_secret_32_hex_chars"
+  channel_0_secret: "your_public_longfast_secret_32_hex"  # MUST be public – private at 0 leaks to all
   channel_1_secret: "your_channel_1_secret_32_hex_chars"
 
   # tcp_poll_enabled: false
