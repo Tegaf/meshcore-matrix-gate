@@ -177,7 +177,7 @@ Run `mcmgate auth login` once, then start mcmgate. See [docs/E2EE.md](docs/E2EE.
 
 `channel_0_secret` must be 32 hex characters (16 bytes). Use the same secret on all MeshCore devices in the channel.
 
-**Multiple channels:** Supported in direction **MeshCore → Matrix** (each room can receive from its own channel). **Matrix → MeshCore:** Heltec WiFi firmware broadcasts only to channel 0. Rooms mapped to channel 1 or higher will not receive messages – firmware accepts the command (returns OK) but does not broadcast on channel 1+. Verified by testing. Use serial/USB for multi-channel Matrix→MeshCore, or keep channel 1+ for MeshCore→Matrix only.
+**Multiple channels:** Supported in direction **MeshCore → Matrix** (each room can receive from its own channel). **Matrix → MeshCore:** Heltec WiFi firmware broadcasts only to channel 0. Rooms mapped to channel 1 or higher will not receive messages – firmware accepts the command (returns OK) but does not broadcast on channel 1+. **⚠️ Channel 0 must be public (LongFast)** – if you put a private channel at slot 0, Matrix messages get sent to ALL private secret groups. Put private channels at slot 1, 2, etc.
 
 **Matrix DMs:** Optional. `matrix_dms.enabled: true` – when a user DMs the bot, messages relay to MeshCore on `default_channel`. Add `recipients` to send MeshCore channel messages to specific Matrix users as DMs.
 

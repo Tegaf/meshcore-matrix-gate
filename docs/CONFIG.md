@@ -2,6 +2,8 @@
 
 Full reference for `~/.mcmgate/config.yaml`. All options and their behaviour.
 
+
+
 ---
 
 ## matrix
@@ -31,6 +33,8 @@ matrix_rooms:
 ```
 
 **Heltec WiFi limitation:** Matrix→MeshCore broadcasts only to channel 0. Rooms on channel 1+ will not receive messages (firmware accepts the command but does not broadcast). MeshCore→Matrix works for all channels. Use serial/USB for multi-channel Matrix→MeshCore.
+
+**⚠️ Channel 0 must NOT be a private channel.** If channel 0 (slot 0 on the Gate) is configured with a private secret, Matrix messages get sent to ALL private secret groups. Channel 0 must be the public LongFast. Put private channels (tegaf-matrix, meshcoregate, etc.) at slot 1, 2, etc.
 
 ---
 
@@ -101,7 +105,7 @@ matrix_to_meshcore_only:
 | `meshnet_name` | no | "MeshCore" | Display name in Matrix |
 | `broadcast_enabled` | no | true | Allow Matrix→MeshCore relay |
 | `message_delay` | no | 2.2 | Seconds between queued messages |
-| `channel_N_secret` | no | - | 32 hex chars for channel N. Same secret on all devices in channel. |
+| `channel_N_secret` | no | - | 32 hex chars for channel N. Same secret on all devices in channel. **Channel 0 must be public (LongFast)** – private secrets at slot 0 cause Matrix messages to leak to all private groups. |
 | `tcp_poll_enabled` | no | false | Enable TCP message polling if firmware doesn't push |
 
 ---
@@ -121,7 +125,7 @@ When a user DMs the bot, relay to MeshCore channel.
 ## Recent Changes (Summary)
 
 - **Room invites:** Manual accept in Element when bot sees invite – click Join.
-- **Channel 1 (WiFi):** Heltec WiFi broadcasts only to channel 0; verified by testing.
+- **Channel 0 (WiFi):** Must be public LongFast. Private secret at slot 0 → Matrix messages leak to all private groups. Heltec WiFi broadcasts only to channel 0.
 - **contacts:** Optional – derived from `contact_rooms` and `matrix_to_meshcore_only`.
 - **contact_rooms:** Supports multiple rooms per contact; shared rooms send to all matching contacts.
 - **matrix_to_meshcore_only:** Send-only rooms, no MeshCore→Matrix.
