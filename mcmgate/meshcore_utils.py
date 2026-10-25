@@ -27,6 +27,20 @@ _dm_key_store = None  # MeshCoreKeyStore for RX_LOG_DATA TEXT_MSG decryption
 
 logger = get_logger(name="MeshCore")
 
+
+def _reader_channel_list(reader) -> list:
+    """Channel list for LOG_DATA decryption (meshcore 2.3+ uses packet_parser.channels)."""
+    parser = getattr(reader, "packet_parser", None)
+    if parser is not None:
+        return parser.channels
+    return getattr(reader, "channels", [])
+
+
+def _enable_channel_decryption(reader) -> None:
+    if hasattr(reader, "decrypt_channels"):
+        reader.decrypt_channels = True
+
+
 # Anti-loop: messages we sent from Matrix -> MeshCore (do not relay back)
 _recently_sent_to_meshcore: dict[str, float] = {}  # normalized text -> timestamp
 _recently_sent_hashes: dict[str, float] = {}  # hash(content) -> timestamp (more robust)
@@ -625,12 +639,14 @@ class MeshCoreDirectClient:
                 logger.warning(f"Invalid channel_{idx}_secret (not hex): {e}")
                 continue
             ch_hash = sha256(secret).hexdigest()[0:2]
-            self._reader.channels[idx] = {
+            channels = _reader_channel_list(self._reader)
+            channels[idx] = {
                 "channel_idx": idx,
                 "channel_name": f"channel_{idx}",
                 "channel_secret": secret,
                 "channel_hash": ch_hash,
             }
+        _enable_channel_decryption(self._reader)
 
         await self._dispatcher.start()
 
@@ -738,7 +754,7 @@ async def connect_meshcore(passed_config=None, force_connect=False):
                         k = f"channel_{i}_secret"
                         if mc_config.get(k):
                             channel_secrets[i] = mc_config[k]
-                    channels = meshcore_client._reader.channels
+                    channels = _reader_channel_list(meshcore_client._reader)
                     next_slot = 0
                     for idx, secret_hex in channel_secrets.items():
                         try:
@@ -771,6 +787,7 @@ async def connect_meshcore(passed_config=None, force_connect=False):
                             }
                             logger.info(f"MeshCore channel {idx} fallback: hash={observed_hash}")
                             next_slot += 1
+                    _enable_channel_decryption(meshcore_client._reader)
                     # DM decryption for RX_LOG_DATA payload_type 2 (TEXT_MSG)
                     await _setup_dm_key_store(meshcore_client, config)
             elif connection_type == "ble":

@@ -38,7 +38,8 @@ async def main():
     # Register channels for LOG_DATA decryption
     channel_secrets = {i: CHANNEL_SECRETS.get(i) for i in range(5) if CHANNEL_SECRETS.get(i)}
     if mc._reader and channel_secrets:
-        channels = mc._reader.channels
+        parser = getattr(mc._reader, "packet_parser", None)
+        channels = parser.channels if parser is not None else mc._reader.channels
         next_slot = 0
         from hashlib import sha256
         for idx, secret_hex in channel_secrets.items():
