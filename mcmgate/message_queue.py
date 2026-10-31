@@ -127,6 +127,11 @@ class MessageQueue:
                             )
                         elif result.type in (EventType.OK, EventType.MSG_SENT):
                             logger.info(f"MeshCore send OK: {current_message.description}")
+                    elif result is None:
+                        logger.warning(
+                            f"MeshCore send without ACK (delivery report may have been posted): "
+                            f"{current_message.description}"
+                        )
                 except Exception as e:
                     logger.error(f"Error sending: {e}")
                 current_message = None

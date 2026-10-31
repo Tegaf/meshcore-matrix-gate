@@ -301,6 +301,57 @@ async def matrix_relay_dm(user_id: str, message: str, longname: str, shortname: 
         logger.warning(f"Matrix DM send error for {user_id}: {e}")
 
 
+async def matrix_relay_status(room_id: str, message: str) -> None:
+    """Post plain text to a Matrix room (e.g. delivery reports)."""
+    client = await connect_matrix()
+    if not client or not config:
+        return
+    if room_id.startswith("#"):
+        resp = await client.room_resolve_alias(room_id)
+        if hasattr(resp, "room_id") and resp.room_id:
+            room_id = resp.room_id
+        else:
+            logger.warning(f"Could not resolve room alias {room_id}")
+            return
+    room_localpart = room_id.split(":")[0] if ":" in room_id else room_id
+    resolved_id = None
+    if client.rooms:
+        for rid in client.rooms:
+            if rid.split(":")[0] == room_localpart:
+                resolved_id = rid
+                break
+    if not resolved_id and room_id in client.rooms:
+        resolved_id = room_id
+    if not resolved_id:
+        client.rooms[room_id] = MatrixRoom(room_id, client.user_id, encrypted=True)
+        try:
+            await client.joined_members(room_id)
+        except Exception as e:
+            logger.debug(f"joined_members for status {room_localpart}: {e}")
+        resolved_id = room_id
+    room_id = resolved_id
+    ignore_unverified = config.get("matrix", {}).get("ignore_unverified_devices", False)
+    from nio.responses import RoomSendError
+
+    content = {"msgtype": "m.text", "body": message}
+    try:
+        resp = await asyncio.wait_for(
+            client.room_send(
+                room_id=room_id,
+                message_type="m.room.message",
+                content=content,
+                ignore_unverified_devices=ignore_unverified,
+            ),
+            timeout=10.0,
+        )
+        if isinstance(resp, RoomSendError):
+            logger.warning(f"Matrix status send failed for {room_localpart}: {resp}")
+        else:
+            logger.info(f"Posted status to {room_localpart} (event_id={resp.event_id})")
+    except Exception as e:
+        logger.warning(f"Matrix status send error for {room_localpart}: {e}")
+
+
 async def on_invite(room, event):
     """Join room when bot is invited (enables DM support)."""
     if event.membership != "invite" or event.state_key != bot_user_id:
@@ -422,14 +473,30 @@ async def on_room_message(room, event):
 
     if use_dm and dm_reply_pubkeys:
         success_count = 0
+        preview = text[:120] + ("…" if len(text) > 120 else "")
         for pk in dm_reply_pubkeys:
             async def send_to_meshcore(pubkey=pk):
-                return await meshcore_client.commands.send_msg(pubkey, reply_message)
+                from mcmgate.delivery_reports import send_dm_and_maybe_report
 
+                return await send_dm_and_maybe_report(
+                    meshcore_client,
+                    pubkey,
+                    reply_message,
+                    cfg=config,
+                    source_room_id=room.room_id,
+                )
+
+            mapping_info = {
+                "matrix_sent_text": reply_message,
+                "room_id": room.room_id,
+                "event_id": getattr(event, "event_id", None),
+                "contact_pubkey": pk,
+                "matrix_body_preview": preview,
+            }
             if queue_message(
                 send_to_meshcore,
-                description=f"Matrix DM reply from {display_name} to MeshCore contact",
-                mapping_info={"matrix_sent_text": reply_message},
+                description=f"Matrix DM reply from {display_name} to MeshCore contact {pk[:8]}…",
+                mapping_info=mapping_info,
             ):
                 success_count += 1
         if success_count:

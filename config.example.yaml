@@ -70,3 +70,19 @@ meshcore:
   channel_1_secret: "your_channel_1_secret_32_hex_chars"
 
   # tcp_poll_enabled: false
+
+# Optional: delivery reports for Matrix → MeshCore DM (ACK on mesh layer, not "read in app")
+delivery_reports:
+  enabled: false
+  dm_only: true
+  max_attempts: 3
+  max_flood_attempts: 2
+  flood_after: 2
+  min_timeout_sec: 3
+  destination: same_room   # same_room | status_room | both
+  status_room_id: "!statusRoom:matrix.example.com"
+  include_trip_time: true
+  include_route: true
+  templates:
+    delivered: "MeshCore: doručeno (ACK) → {contact} | {mode} | {hops} | {nodes} | RTT {trip_ms} ms"
+    failed: "MeshCore: nedoručeno → {contact} po {attempts} pokusech (bez ACK; může stejně dojít floodem)"

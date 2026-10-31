@@ -110,6 +110,29 @@ matrix_to_meshcore_only:
 
 ---
 
+## delivery_reports (optional)
+
+After **Matrix → MeshCore DM** sends, post a status line back to Matrix (optional).
+
+**Important:** “Doručeno” means **MeshCore ACK on the radio/mesh layer**, not that the contact read the message in the app. Flood DMs may arrive without ACK — failed reports can be false negatives.
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `enabled` | no | false | Enable delivery reports |
+| `dm_only` | no | true | Only for DM sends (not channel broadcast) |
+| `max_attempts` | no | 3 | Passed to `send_msg_with_retry` |
+| `max_flood_attempts` | no | 2 | Flood retries after direct path fails |
+| `flood_after` | no | 2 | Switch to flood after N direct attempts |
+| `min_timeout_sec` | no | 3 | Minimum wait per attempt for ACK |
+| `destination` | no | same_room | `same_room`, `status_room`, or `both` |
+| `status_room_id` | no | - | Room for status when using `status_room` / `both` |
+| `include_trip_time` | no | true | Include ACK round-trip ms when available |
+| `include_route` | no | true | Hop count + repeater names from contact `out_path` |
+| `templates.delivered` | no | (see example) | Placeholders: `{contact}`, `{mode}`, `{hops}`, `{nodes}`, `{trip_ms}`, `{attempts}` |
+| `templates.failed` | no | (see example) | Placeholders: `{contact}`, `{attempts}` |
+
+---
+
 ## matrix_dms (optional)
 
 When a user DMs the bot, relay to MeshCore channel.
