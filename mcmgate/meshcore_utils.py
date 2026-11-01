@@ -387,7 +387,7 @@ def _try_decrypt_rx_log_dm(payload: dict, dm_cfg: dict | None = None) -> tuple[s
         from meshcoredecoder.types.crypto import DecryptionOptions
         from meshcoredecoder.types.enums import PayloadType
 
-        options = DecryptionOptions(key_store=_dm_key_store, attempt_decryption=False)
+        options = DecryptionOptions(key_store=_dm_key_store, attempt_decryption=True)
         packet = MeshCoreDecoder.decode(raw_hex, options)
         if not packet or packet.payload_type != PayloadType.TextMessage:
             return None, "?", None
@@ -395,10 +395,25 @@ def _try_decrypt_rx_log_dm(payload: dict, dm_cfg: dict | None = None) -> tuple[s
         if not tm:
             return None, "?", None
         source_hash = (getattr(tm, "source_hash", "") or "?").upper()
+        dest_hash = (getattr(tm, "destination_hash", "") or "").lower()
+        node_pk = (dm_cfg.get("node_public_key") or "").strip().lower()
+        if node_pk and dest_hash and not node_pk.startswith(dest_hash):
+            logger.debug(f"DM not for this gate (dest={dest_hash}), ignoring")
+            return None, source_hash, None
+
         ciphertext = getattr(tm, "ciphertext", None)
         cipher_mac = getattr(tm, "cipher_mac", None)
         if not ciphertext or not cipher_mac:
-            return None, source_hash, None
+            dec = getattr(tm, "decrypted", None)
+            if not dec:
+                return None, source_hash, None
+            msg = dec.get("message", "")
+            if not _is_plausible_dm_plaintext(msg):
+                return None, source_hash, None
+            sender_pubkey = _resolve_configured_sender_by_hash(source_hash, dm_cfg)
+            if not sender_pubkey:
+                return None, source_hash, None
+            return msg, source_hash, sender_pubkey
 
         shared_secrets = getattr(_dm_key_store, "shared_secrets", {}) or {}
         for peer_pub, shared_hex in shared_secrets.items():
@@ -420,7 +435,7 @@ def _try_decrypt_rx_log_dm(payload: dict, dm_cfg: dict | None = None) -> tuple[s
                 )
                 continue
             return msg, source_hash, pk
-        logger.warning(
+        logger.debug(
             f"DM decrypt: no configured contact matched payload "
             f"(src_hash={source_hash}, allowed={len(allowed)} contacts)"
         )
@@ -982,9 +997,8 @@ async def on_meshcore_message(event):
                     is_meshcore_dm = False
                     text = None
                 else:
-                    logger.warning(
-                        "RX_LOG_DATA: payload_type=2 (DM) decrypt failed or sender not in contact_rooms – "
-                        "check node keys / meshcore_dm.contact_rooms"
+                    logger.debug(
+                        "RX_LOG_DATA: payload_type=2 (DM) not for us or not from configured contact"
                     )
             elif pt == 0x05:  # channel msg but failed to decrypt
                 ch = payload.get("chan_hash", "?")

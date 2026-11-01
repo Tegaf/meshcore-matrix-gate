@@ -34,6 +34,7 @@ class MessageQueue:
         self._running = False
         self._last_send_time = 0.0
         self._message_delay = DEFAULT_MESSAGE_DELAY
+        self._mesh_send_lock: asyncio.Lock | None = None
 
     def start(self, message_delay=DEFAULT_MESSAGE_DELAY):
         self._message_delay = max(2.0, message_delay)
@@ -70,71 +71,75 @@ class MessageQueue:
             try:
                 loop = asyncio.get_running_loop()
                 if loop.is_running():
+                    if self._mesh_send_lock is None:
+                        self._mesh_send_lock = asyncio.Lock()
                     self._processor_task = loop.create_task(self._process_queue())
             except RuntimeError:
                 pass
 
-    async def _process_queue(self):
-        current_message = None
-        while self._running:
-            try:
-                if current_message is None:
-                    try:
-                        current_message = self._queue.get_nowait()
-                    except Empty:
-                        await asyncio.sleep(0.1)
-                        continue
-
-                # Check MeshCore client
+    async def _run_queued_send(self, current_message: QueuedMessage) -> None:
+        """Run one mesh send (may take tens of seconds with delivery retry). Serialized by lock."""
+        assert self._mesh_send_lock is not None
+        async with self._mesh_send_lock:
+            for _ in range(120):
                 try:
                     from mcmgate.meshcore_utils import meshcore_client
-                    if not meshcore_client or not meshcore_client.is_connected:
-                        await asyncio.sleep(1.0)
-                        continue
+
+                    if meshcore_client and meshcore_client.is_connected:
+                        break
                 except Exception:
-                    await asyncio.sleep(1.0)
+                    pass
+                await asyncio.sleep(1.0)
+            else:
+                logger.error(f"MeshCore not connected, dropping: {current_message.description}")
+                return
+
+            if self._last_send_time > 0:
+                elapsed = time.time() - self._last_send_time
+                if elapsed < self._message_delay:
+                    await asyncio.sleep(self._message_delay - elapsed)
+
+            mi = current_message.mapping_info or {}
+            if txt := mi.get("matrix_sent_text"):
+                from mcmgate.meshcore_utils import register_sent_to_meshcore
+
+                register_sent_to_meshcore(txt)
+                if _DEBUG:
+                    logger.info(f"[DEBUG] QUEUE: registering BEFORE send {txt[:40]!r}")
+
+            try:
+                result = current_message.send_function(
+                    *current_message.args, **current_message.kwargs
+                )
+                if asyncio.iscoroutine(result):
+                    result = await result
+                self._last_send_time = time.time()
+                if result is not None and hasattr(result, "type"):
+                    if result.type == EventType.ERROR:
+                        logger.error(
+                            f"MeshCore send failed: {result.payload} "
+                            f"(msg: {current_message.description})"
+                        )
+                    elif result.type in (EventType.OK, EventType.MSG_SENT):
+                        logger.info(f"MeshCore send OK: {current_message.description}")
+                elif result is None:
+                    logger.warning(
+                        f"MeshCore send without ACK (delivery report may have been posted): "
+                        f"{current_message.description}"
+                    )
+            except Exception as e:
+                logger.error(f"Error sending: {e}")
+
+    async def _process_queue(self):
+        while self._running:
+            try:
+                try:
+                    current_message = self._queue.get_nowait()
+                except Empty:
+                    await asyncio.sleep(0.1)
                     continue
 
-                # Rate limit
-                if self._last_send_time > 0:
-                    elapsed = time.time() - self._last_send_time
-                    if elapsed < self._message_delay:
-                        await asyncio.sleep(self._message_delay - elapsed)
-                        continue
-
-                # Anti-loop: register BEFORE send (echo may arrive before return)
-                mi = current_message.mapping_info or {}
-                if txt := mi.get("matrix_sent_text"):
-                    from mcmgate.meshcore_utils import register_sent_to_meshcore
-                    register_sent_to_meshcore(txt)
-                    if _DEBUG:
-                        logger.info(f"[DEBUG] QUEUE: registering BEFORE send {txt[:40]!r}")
-
-                # Send - support both sync and async
-                try:
-                    result = current_message.send_function(
-                        *current_message.args, **current_message.kwargs
-                    )
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    self._last_send_time = time.time()
-                    # Log send_chan_msg result for debugging
-                    if result is not None and hasattr(result, "type"):
-                        if result.type == EventType.ERROR:
-                            logger.error(
-                                f"MeshCore send failed: {result.payload} "
-                                f"(msg: {current_message.description})"
-                            )
-                        elif result.type in (EventType.OK, EventType.MSG_SENT):
-                            logger.info(f"MeshCore send OK: {current_message.description}")
-                    elif result is None:
-                        logger.warning(
-                            f"MeshCore send without ACK (delivery report may have been posted): "
-                            f"{current_message.description}"
-                        )
-                except Exception as e:
-                    logger.error(f"Error sending: {e}")
-                current_message = None
+                asyncio.create_task(self._run_queued_send(current_message))
             except asyncio.CancelledError:
                 break
             except Exception as e:
